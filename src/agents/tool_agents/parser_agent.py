@@ -1,19 +1,21 @@
-from typing import Dict, Any
-from src.agents.tool_agents.base_tool_agent import BaseToolAgent
-import src.formats.latex.prompts as pm
-from pathlib import Path
-import sys
 import os
-import requests
-import time
+import sys
+from pathlib import Path
+from typing import Dict, Any
+
+from langchain_core.messages import SystemMessage, HumanMessage
 from tqdm import tqdm
+
+import src.formats.latex.prompts as pm
+from src.agents.tool_agents.base_tool_agent import BaseToolAgent
 
 base_dir = os.getcwd()
 sys.path.append(base_dir)
 
+
 class ParserAgent(BaseToolAgent):
-    def __init__(self, 
-                 config: Dict[str, Any], 
+    def __init__(self,
+                 config: Dict[str, Any],
                  project_dir: str = None,
                  output_dir: str = None
                  ):
@@ -31,7 +33,7 @@ class ParserAgent(BaseToolAgent):
 
         from src.formats.latex.parser import LatexParser
         latex_parser = LatexParser(self.project_dir, self.output_dir)
-        latex_parser.parse() 
+        latex_parser.parse()
 
         env_need_trans = []
         if latex_parser.envs_json:
@@ -43,16 +45,16 @@ class ParserAgent(BaseToolAgent):
             self.log(f"🤖💬 Starting seting need_trans for project...⏳: {os.path.basename(self.project_dir)}.")
 
             placeholder_to_index = {
-                        env["placeholder"]: i for i, env in enumerate(latex_parser.envs_json)
-                    }
-            
+                env["placeholder"]: i for i, env in enumerate(latex_parser.envs_json)
+            }
+
             for env in tqdm(env_need_trans, desc=f"Setting need trans", total=len(env_need_trans), unit="env"):
                 i = placeholder_to_index.get(env["placeholder"])
                 if i is not None:
                     latex_parser.envs_json[i]["need_trans"] = self._request_llm_for_judge(
-                                                                    pm.set_need_trans_for_envs_system_prompt,
-                                                                    env["content"]
-                                                                    )
+                        pm.set_need_trans_for_envs_system_prompt,
+                        env["content"]
+                    )
 
         self.save_file(Path(self.output_dir, "inputs_map.json"), "json", latex_parser.inputs_json)
         self.save_file(Path(self.output_dir, "envs_map.json"), "json", latex_parser.envs_json)
@@ -62,7 +64,7 @@ class ParserAgent(BaseToolAgent):
 
         self.log(f"✅ Successfully parsed {os.path.basename(self.project_dir)}.")
         self.log(f"🤖💬 Parsed files are saved in {self.output_dir}.")
-            
+
     # def _set_need_trans(self, env: Dict[str, Any]) -> Dict[str, Any]:
     #     """
     #     Determine whether translation is needed for the given environment.
@@ -80,47 +82,7 @@ class ParserAgent(BaseToolAgent):
         """
         Request the api to set need trans for env
         """
-        payload = {
-            "model": f"{self.model}",
-            "messages": [
-                {
-                    "role": "system", 
-                    "content": f"{system_prompt}"
-                },
-                {
-                    "role": "user", 
-                    "content": f"{text}"
-                }
-            ],
-            "temperature": 0,
-            # "max_length": 100000,
-            "max_tokens": 50
-        }
-
-        headers = {
-            "Authorization": f"Bearer {self.API_KEY}",
-            "Content-Type": "application/json"
-        }
-        
-        
-        for attempt in range(1, 4):
-            try:
-                response = requests.post(self.base_url, json=payload, headers=headers, timeout=100)
-                response.raise_for_status()  
-                result = response.json()
-                output = result["choices"][0]["message"]["content"].strip()
-
-                if output.lower() == "true":
-                    return True
-                elif output.lower() == "false":
-                    return False
-                else:
-                    return True                
-            except requests.exceptions.RequestException as e:
-                if attempt < 3:
-                    print(f"{e}")
-                    time.sleep(3)  
-                else:
-                    print(f"⚠️ Failed to Set need trans, set True.")
-                    return True
-                
+        system_message = SystemMessage(system_prompt)
+        human_message = HumanMessage(text)
+        res = self.agent.invoke([system_message, human_message])
+        return res.content

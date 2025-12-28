@@ -5,6 +5,8 @@ import yaml
 import toml
 from pathlib import Path
 
+from langchain_openai import ChatOpenAI
+
 
 class BaseToolAgent(ABC):
     """
@@ -29,6 +31,9 @@ class BaseToolAgent(ABC):
         """
         self.agent_name = agent_name
         self.config = config if config is not None else {}
+        self.agent = ChatOpenAI(model=config["llm_config"].get("model", "gpt-4o"),
+                                base_url=config["llm_config"].get("base_url", None),
+                                api_key=config["llm_config"].get("api_key", None))
         
     def log(self, message: str, level: str = "info"):
         """
@@ -68,7 +73,7 @@ class BaseToolAgent(ABC):
         """
         return self.config.get(key, default)
     
-    def read_file(self, file_path: str, file_format: str) -> str:
+    def read_file(self, file_path: Path|str, file_format: str) -> Any:
         """
         Reads a file and returns its content.
         """
@@ -77,14 +82,14 @@ class BaseToolAgent(ABC):
                 return json.load(f)
         elif file_format == "yaml":
             with open(file_path, "r", encoding='utf-8') as f:
-                return yaml.load(f)
+                return yaml.load(f,yaml.FullLoader)
         elif file_format == "toml":
             with open(file_path, "r", encoding='utf-8') as f:
                 return toml.load(f)
         else:
             raise ValueError(f"Unsupported file format: {file_format}")
         
-    def save_file(self, file_path: str, file_format: str, data: Any):
+    def save_file(self, file_path: Path|str, file_format: str, data: Any):
         """
         Saves data to a file.
         """

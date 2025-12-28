@@ -12,7 +12,8 @@ from pathlib import Path
 
 base_dir = os.getcwd()
 sys.path.append(base_dir)
-
+import dotenv
+dotenv.load_dotenv()
 def main():
     """
     Main function to run the LaTeXTrans application.
@@ -47,6 +48,9 @@ def main():
 
     # args_dict = vars(args)
     config = toml.load(args.config)
+    config["llm_config"]["model"]=os.getenv('OPENAI_MODEL')
+    config["llm_config"]["base_url"]=os.getenv('OPENAI_BASE_URL')
+    config["llm_config"]["api_key"]=os.getenv('OPENAI_API_KEY')
 
     if args.url:
         config["llm_config"]["base_url"] = args.url
