@@ -30,6 +30,9 @@ class TaskRepository:
         self.db.flush()
         return config
 
+    def flush(self) -> None:
+        self.db.flush()
+
     def get_task_by_id(self, task_id: str) -> TranslationTask | None:
         stmt = (
             select(TranslationTask)
@@ -48,6 +51,7 @@ class TaskRepository:
         page: int,
         page_size: int,
         status_filter: str | None = None,
+        task_name: str | None = None,
         arxiv_id: str | None = None,
         created_by: str | None = None,
         created_from: datetime | None = None,
@@ -56,6 +60,8 @@ class TaskRepository:
         filters = []
         if status_filter:
             filters.append(TranslationTask.status == status_filter)
+        if task_name:
+            filters.append(TranslationTask.task_name.ilike(f"%{task_name}%"))
         if arxiv_id:
             filters.append(TranslationTask.arxiv_id == arxiv_id)
         if created_by:

@@ -13,3 +13,15 @@ tenacity
 python-json-logger
 pytest
 pytest-asyncio
+PyYAML
+toml
+requests
+beautifulsoup4
+tqdm
+regex
+pylatexenc
+tiktoken
+langchain-openai
+langchain-core
+aiohttp
+pandas

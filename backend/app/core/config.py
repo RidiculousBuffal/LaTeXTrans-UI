@@ -29,6 +29,8 @@ class Settings(BaseSettings):
     openai_api_key: str = Field(default="", alias="OPENAI_API_KEY")
 
     task_workspace_root: str = "runtime/tasks"
+    upload_tmp_root: str = "runtime/uploads"
+    max_upload_bytes: int = 250 * 1024 * 1024
     default_source_language: str = "en"
     default_target_language: str = "zh"
     default_created_by: str = "internal-user"

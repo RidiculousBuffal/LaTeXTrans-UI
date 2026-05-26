@@ -41,6 +41,7 @@ class TaskArtifactResponse(APIModel):
     file_size: int | None
     version: int
     metadata_json: dict[str, Any] | None
+    download_url: str | None = None
     created_at: datetime
 
 
@@ -116,6 +117,12 @@ class ArtifactListResponse(APIModel):
 class TaskLogsResponse(APIModel):
     task_id: str
     items: list[TaskArtifactResponse]
+
+
+class FailureSummaryResponse(APIModel):
+    recent_failed_tasks: list[TaskSummaryResponse]
+    failed_stage_counts: dict[str, int]
+    total_failed: int
 
 
 class ArchiveListItem(APIModel):
