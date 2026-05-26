@@ -1,0 +1,15 @@
+fastapi
+uvicorn
+sqlalchemy
+alembic
+pymysql
+pydantic
+pydantic-settings
+python-dotenv
+python-multipart
+minio
+httpx
+tenacity
+python-json-logger
+pytest
+pytest-asyncio
