@@ -84,6 +84,38 @@ class TaskRepository:
         total = self.db.scalar(count_stmt) or 0
         return items, total
 
+    def list_tasks_unpaginated(
+        self,
+        *,
+        status_filter: str | None = None,
+        task_name: str | None = None,
+        arxiv_id: str | None = None,
+        created_by: str | None = None,
+        created_from: datetime | None = None,
+        created_to: datetime | None = None,
+    ) -> list[TranslationTask]:
+        filters = []
+        if status_filter:
+            filters.append(TranslationTask.status == status_filter)
+        if task_name:
+            filters.append(TranslationTask.task_name.ilike(f"%{task_name}%"))
+        if arxiv_id:
+            filters.append(TranslationTask.arxiv_id == arxiv_id)
+        if created_by:
+            filters.append(TranslationTask.created_by == created_by)
+        if created_from:
+            filters.append(TranslationTask.created_at >= created_from)
+        if created_to:
+            filters.append(TranslationTask.created_at <= created_to)
+
+        stmt = (
+            select(TranslationTask)
+            .where(*filters)
+            .options(selectinload(TranslationTask.artifacts))
+            .order_by(TranslationTask.created_at.desc())
+        )
+        return list(self.db.scalars(stmt).all())
+
     def commit(self) -> None:
         self.db.commit()
 

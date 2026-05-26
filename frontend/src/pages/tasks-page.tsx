@@ -4,7 +4,7 @@ import { Link } from "react-router-dom"
 import { ArrowRightIcon } from "lucide-react"
 
 import { getFailureSummary, listTasks } from "@/lib/api"
-import { getTaskPollingInterval } from "@/hooks/use-polling"
+import { getTaskListPollingInterval } from "@/hooks/use-polling"
 import type { TaskListFilters } from "@/lib/types"
 import { TaskFilters } from "@/components/tasks/task-filters"
 import { TaskSummaryCards } from "@/components/tasks/task-summary-cards"
@@ -31,6 +31,8 @@ const defaultFilters: TaskListFilters = {
   task_name: "",
   arxiv_id: "",
   created_by: "",
+  created_from: "",
+  created_to: "",
 }
 
 export function TasksPage() {
@@ -39,8 +41,7 @@ export function TasksPage() {
   const tasksQuery = useQuery({
     queryKey: ["tasks", filters],
     queryFn: () => listTasks(filters),
-    refetchInterval: (query) =>
-      getTaskPollingInterval(query.state.data?.items[0]?.status),
+    refetchInterval: (query) => getTaskListPollingInterval(query.state.data?.items),
   })
 
   const failuresQuery = useQuery({

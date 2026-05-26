@@ -26,7 +26,7 @@ type TaskFiltersProps = {
 
 export function TaskFilters({ filters, onChange, onReset }: TaskFiltersProps) {
   return (
-    <FieldGroup className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+    <FieldGroup className="grid gap-4 md:grid-cols-2 xl:grid-cols-7">
       <Field>
         <FieldLabel htmlFor="task-name">Task name</FieldLabel>
         <FieldContent>
@@ -92,6 +92,32 @@ export function TaskFilters({ filters, onChange, onReset }: TaskFiltersProps) {
               onChange({ ...filters, page: 1, created_by: event.target.value })
             }
             placeholder="frontend-user"
+          />
+        </FieldContent>
+      </Field>
+      <Field>
+        <FieldLabel htmlFor="created-from">Created from</FieldLabel>
+        <FieldContent>
+          <Input
+            id="created-from"
+            type="datetime-local"
+            value={filters.created_from ?? ""}
+            onChange={(event) =>
+              onChange({ ...filters, page: 1, created_from: event.target.value })
+            }
+          />
+        </FieldContent>
+      </Field>
+      <Field>
+        <FieldLabel htmlFor="created-to">Created to</FieldLabel>
+        <FieldContent>
+          <Input
+            id="created-to"
+            type="datetime-local"
+            value={filters.created_to ?? ""}
+            onChange={(event) =>
+              onChange({ ...filters, page: 1, created_to: event.target.value })
+            }
           />
         </FieldContent>
       </Field>

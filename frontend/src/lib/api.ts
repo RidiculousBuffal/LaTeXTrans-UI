@@ -18,7 +18,19 @@ const api = axios.create({
 
 function buildSearchParams(filters: TaskListFilters) {
   return Object.fromEntries(
-    Object.entries(filters).filter(([, value]) => value !== undefined && value !== "")
+    Object.entries(filters)
+      .filter(([, value]) => value !== undefined && value !== "")
+      .map(([key, value]) => {
+        if (
+          (key === "created_from" || key === "created_to") &&
+          typeof value === "string" &&
+          value.length > 0
+        ) {
+          return [key, new Date(value).toISOString()]
+        }
+
+        return [key, value]
+      })
   )
 }
 

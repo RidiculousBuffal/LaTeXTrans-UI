@@ -2,12 +2,15 @@ from __future__ import annotations
 
 import contextlib
 import json
+import logging
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 
 from sqlalchemy.orm import Session
 
+from backend.app.core.logging import configure_logging
 from backend.app.db.session import SessionLocal
 from backend.app.models.task import TaskArtifactType, TaskEvent, TaskStatus, TranslationTask
 from backend.app.repositories.task_repository import TaskRepository
@@ -15,6 +18,9 @@ from backend.app.services.pipeline_service import PipelineService
 from backend.app.services.storage_service import StorageService
 from backend.app.services.translation_service import TranslationService
 
+
+configure_logging()
+logger = logging.getLogger(__name__)
 
 EXECUTOR = ThreadPoolExecutor(max_workers=2, thread_name_prefix="translation-runner")
 
@@ -29,6 +35,10 @@ PHASE_PROGRESS = {
     TaskStatus.FAILED: 100,
     TaskStatus.CANCELED: 100,
 }
+
+
+class TaskCanceledError(RuntimeError):
+    pass
 
 
 def submit_task(task_id: str) -> None:
@@ -53,24 +63,33 @@ def _run_task(*, task_id: str, db: Session) -> None:
     if not task:
         return
 
+    runtime_dirs = translation_service.ensure_runtime_dirs(task=task)
+    config = dict(task.configs[-1].config_snapshot_json)
+    config["tex_sources_dir"] = runtime_dirs["sources_dir"]
+    config["output_dir"] = runtime_dirs["output_dir"]
+    log_path = Path(runtime_dirs["runtime_dir"]) / "task.log"
+    metadata_path = Path(runtime_dirs["runtime_dir"]) / "task-config.json"
+    event_log_path = Path(runtime_dirs["runtime_dir"]) / "task-events.jsonl"
+    metadata_path.write_text(json.dumps(config, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    projects: list[str] = []
+    log_path.touch(exist_ok=True)
+    event_log_path.touch(exist_ok=True)
+
+    logger.info(
+        "translation_task_started",
+        extra={"task_id": task.id, "status": task.status.value, "workspace_dir": runtime_dirs["workspace_dir"]},
+    )
+
     try:
-        if task.status == TaskStatus.CANCELED:
-            return
-
-        runtime_dirs = translation_service.ensure_runtime_dirs(task=task)
-        config = dict(task.configs[-1].config_snapshot_json)
-        config["tex_sources_dir"] = runtime_dirs["sources_dir"]
-        config["output_dir"] = runtime_dirs["output_dir"]
-        log_path = Path(runtime_dirs["runtime_dir"]) / "task.log"
-        metadata_path = Path(runtime_dirs["runtime_dir"]) / "task-config.json"
-        metadata_path.write_text(json.dumps(config, ensure_ascii=False, indent=2), encoding="utf-8")
-
+        _ensure_not_canceled(repository=repository, task_id=task_id)
         _set_status(
             repository=repository,
-            task=task,
+            task_id=task_id,
             status=TaskStatus.DOWNLOADING,
             message="Preparing and downloading translation sources.",
             details={"workspace_dir": runtime_dirs["workspace_dir"]},
+            event_log_path=event_log_path,
             set_started=True,
         )
 
@@ -79,7 +98,9 @@ def _run_task(*, task_id: str, db: Session) -> None:
                 config=config,
                 workspace_dir=runtime_dirs["workspace_dir"],
             )
+            _ensure_not_canceled(repository=repository, task_id=task_id)
 
+            task = _require_task(repository, task_id)
             for source_archive in source_archives:
                 repository.add_artifact(
                     storage_service.upload_path(
@@ -90,31 +111,37 @@ def _run_task(*, task_id: str, db: Session) -> None:
                 )
 
             for project_dir in projects:
+                _ensure_not_canceled(repository=repository, task_id=task_id)
                 _set_status(
                     repository=repository,
-                    task=task,
+                    task_id=task_id,
                     status=TaskStatus.PARSING,
                     message="Source project prepared and ready for parsing.",
                     details={"project_dir": project_dir},
+                    event_log_path=event_log_path,
                 )
+                _ensure_not_canceled(repository=repository, task_id=task_id)
                 _set_status(
                     repository=repository,
-                    task=task,
+                    task_id=task_id,
                     status=TaskStatus.TRANSLATING,
                     message="Translation pipeline started.",
                     details={"project_dir": project_dir},
+                    event_log_path=event_log_path,
                 )
                 pipeline_service.run_translation_pipeline(
                     config=config,
                     project_dir=project_dir,
                     output_dir=runtime_dirs["output_dir"],
                 )
+                _ensure_not_canceled(repository=repository, task_id=task_id)
                 _set_status(
                     repository=repository,
-                    task=task,
+                    task_id=task_id,
                     status=TaskStatus.VALIDATING,
                     message="Translation finished, validating generated files.",
                     details={"project_dir": project_dir},
+                    event_log_path=event_log_path,
                 )
 
                 translated_project_dir = str(
@@ -124,15 +151,17 @@ def _run_task(*, task_id: str, db: Session) -> None:
                     translated_project_dir=translated_project_dir,
                     target_language=task.target_language,
                 )
-
+                _ensure_not_canceled(repository=repository, task_id=task_id)
                 _set_status(
                     repository=repository,
-                    task=task,
+                    task_id=task_id,
                     status=TaskStatus.GENERATING,
                     message="Registering generated artifacts.",
                     details={"translated_project_dir": translated_project_dir},
+                    event_log_path=event_log_path,
                 )
 
+                task = _require_task(repository, task_id)
                 repository.add_artifact(
                     storage_service.upload_path(
                         task=task,
@@ -140,7 +169,6 @@ def _run_task(*, task_id: str, db: Session) -> None:
                         file_path=project_dir,
                     )
                 )
-
                 repository.add_artifact(
                     storage_service.upload_path(
                         task=task,
@@ -158,62 +186,197 @@ def _run_task(*, task_id: str, db: Session) -> None:
                         )
                     )
 
-        repository.add_artifact(
-            storage_service.upload_path(
-                task=task,
-                artifact_type=TaskArtifactType.METADATA,
-                file_path=metadata_path,
-            )
-        )
-        repository.add_artifact(
-            storage_service.upload_path(
-                task=task,
-                artifact_type=TaskArtifactType.LOG,
-                file_path=log_path,
-            )
-        )
-
         repository.commit()
-
+        _ensure_not_canceled(repository=repository, task_id=task_id)
         _set_status(
             repository=repository,
-            task=task,
+            task_id=task_id,
             status=TaskStatus.SUCCEEDED,
             message="Translation task completed successfully.",
             details={"project_count": len(projects)},
+            event_log_path=event_log_path,
             set_finished=True,
         )
-    except Exception as exc:
-        task = repository.get_task_by_id(task_id)
-        if not task:
-            return
-        task.status = TaskStatus.FAILED
-        task.current_stage = TaskStatus.FAILED.value
-        task.progress_percent = PHASE_PROGRESS[TaskStatus.FAILED]
-        task.error_message = str(exc)
-        task.finished_at = datetime.utcnow()
-        repository.add_event(
-            TaskEvent(
-                task=task,
-                stage=TaskStatus.FAILED.value,
-                status=TaskStatus.FAILED,
-                message="Translation task failed.",
-                details_json={"error": str(exc)},
-            )
+        logger.info(
+            "translation_task_succeeded",
+            extra={"task_id": task_id, "project_count": len(projects)},
         )
-        repository.commit()
+    except TaskCanceledError:
+        _mark_canceled(repository=repository, task_id=task_id, event_log_path=event_log_path)
+        logger.info("translation_task_canceled", extra={"task_id": task_id})
+    except Exception as exc:
+        _mark_failed(repository=repository, task_id=task_id, exc=exc, event_log_path=event_log_path)
+        logger.exception("translation_task_failed", extra={"task_id": task_id})
+    finally:
+        _finalize_runtime_artifacts(
+            repository=repository,
+            task_id=task_id,
+            storage_service=storage_service,
+            metadata_path=metadata_path,
+            log_path=log_path,
+            event_log_path=event_log_path,
+        )
+
+
+def _require_task(repository: TaskRepository, task_id: str) -> TranslationTask:
+    task = repository.get_task_by_id(task_id)
+    if not task:
+        raise RuntimeError(f"Task {task_id} no longer exists.")
+    return task
+
+
+def _ensure_not_canceled(*, repository: TaskRepository, task_id: str) -> TranslationTask:
+    task = _require_task(repository, task_id)
+    if task.canceled_at or task.status == TaskStatus.CANCELED:
+        raise TaskCanceledError(f"Task {task_id} has been canceled.")
+    return task
+
+
+def _mark_canceled(
+    *,
+    repository: TaskRepository,
+    task_id: str,
+    event_log_path: Path,
+) -> None:
+    task = repository.get_task_by_id(task_id)
+    if not task:
+        return
+
+    canceled_at = task.canceled_at or datetime.utcnow()
+    task.status = TaskStatus.CANCELED
+    task.current_stage = TaskStatus.CANCELED.value
+    task.progress_percent = PHASE_PROGRESS[TaskStatus.CANCELED]
+    task.error_message = None
+    task.finished_at = canceled_at
+    task.canceled_at = canceled_at
+
+    repository.add_event(
+        TaskEvent(
+            task=task,
+            stage=TaskStatus.CANCELED.value,
+            status=TaskStatus.CANCELED,
+            message="Task canceled and execution halted before completion.",
+        )
+    )
+    repository.commit()
+    _append_event_log(
+        event_log_path=event_log_path,
+        payload={
+            "timestamp": canceled_at.isoformat(),
+            "status": TaskStatus.CANCELED.value,
+            "message": "Task canceled and execution halted before completion.",
+        },
+    )
+
+
+def _mark_failed(
+    *,
+    repository: TaskRepository,
+    task_id: str,
+    exc: Exception,
+    event_log_path: Path,
+) -> None:
+    task = repository.get_task_by_id(task_id)
+    if not task:
+        return
+
+    task.status = TaskStatus.FAILED
+    task.current_stage = TaskStatus.FAILED.value
+    task.progress_percent = PHASE_PROGRESS[TaskStatus.FAILED]
+    task.error_message = str(exc)
+    task.finished_at = datetime.utcnow()
+    repository.add_event(
+        TaskEvent(
+            task=task,
+            stage=TaskStatus.FAILED.value,
+            status=TaskStatus.FAILED,
+            message="Translation task failed.",
+            details_json={"error": str(exc)},
+        )
+    )
+    repository.commit()
+    _append_event_log(
+        event_log_path=event_log_path,
+        payload={
+            "timestamp": task.finished_at.isoformat() if task.finished_at else datetime.utcnow().isoformat(),
+            "status": TaskStatus.FAILED.value,
+            "message": "Translation task failed.",
+            "details": {"error": str(exc)},
+        },
+    )
+
+
+def _finalize_runtime_artifacts(
+    *,
+    repository: TaskRepository,
+    task_id: str,
+    storage_service: StorageService,
+    metadata_path: Path,
+    log_path: Path,
+    event_log_path: Path,
+) -> None:
+    task = repository.get_task_by_id(task_id)
+    if not task:
+        return
+
+    uploads = [
+        (TaskArtifactType.METADATA, metadata_path, {"kind": "task-config"}),
+        (TaskArtifactType.LOG, log_path, {"kind": "execution-log"}),
+        (TaskArtifactType.INTERMEDIATE_JSON, event_log_path, {"kind": "structured-event-log"}),
+    ]
+    uploaded_keys = {(artifact.artifact_type, artifact.file_name) for artifact in task.artifacts}
+
+    for artifact_type, path, metadata in uploads:
+        if not path.exists():
+            continue
+        dedupe_key = (artifact_type, path.name)
+        if dedupe_key in uploaded_keys:
+            continue
+        try:
+            repository.add_artifact(
+                storage_service.upload_path(
+                    task=task,
+                    artifact_type=artifact_type,
+                    file_path=path,
+                    metadata=metadata,
+                )
+            )
+            uploaded_keys.add(dedupe_key)
+        except Exception as exc:
+            logger.exception(
+                "task_artifact_upload_failed",
+                extra={"task_id": task_id, "artifact_type": artifact_type.value, "file_name": path.name},
+            )
+            repository.rollback()
+            task = repository.get_task_by_id(task_id)
+            if not task:
+                return
+            repository.add_event(
+                TaskEvent(
+                    task=task,
+                    stage=task.current_stage,
+                    status=task.status,
+                    message=f"Failed to upload artifact: {path.name}",
+                    details_json={"artifact_type": artifact_type.value, "error": str(exc)},
+                )
+            )
+            repository.commit()
+
+    repository.commit()
 
 
 def _set_status(
     *,
     repository: TaskRepository,
-    task: TranslationTask,
+    task_id: str,
     status: TaskStatus,
     message: str,
-    details: dict | None = None,
+    event_log_path: Path,
+    details: dict[str, Any] | None = None,
     set_started: bool = False,
     set_finished: bool = False,
 ) -> None:
+    task = _require_task(repository, task_id)
     task.status = status
     task.current_stage = status.value
     task.progress_percent = PHASE_PROGRESS[status]
@@ -233,3 +396,21 @@ def _set_status(
         )
     )
     repository.commit()
+    _append_event_log(
+        event_log_path=event_log_path,
+        payload={
+            "timestamp": datetime.utcnow().isoformat(),
+            "status": status.value,
+            "message": message,
+            "details": details,
+        },
+    )
+    logger.info(
+        "translation_task_status_changed",
+        extra={"task_id": task.id, "status": status.value, "details": details or {}},
+    )
+
+
+def _append_event_log(*, event_log_path: Path, payload: dict[str, Any]) -> None:
+    with event_log_path.open("a", encoding="utf-8") as event_log:
+        event_log.write(json.dumps(payload, ensure_ascii=False) + "\n")

@@ -36,6 +36,8 @@ const defaultFilters: TaskListFilters = {
   task_name: "",
   arxiv_id: "",
   created_by: "",
+  created_from: "",
+  created_to: "",
 }
 
 export function ArchivesPage() {
@@ -68,7 +70,7 @@ export function ArchivesPage() {
         <CardHeader>
           <CardTitle>Archived tasks</CardTitle>
           <CardDescription>
-            Each row combines the task summary with its artifact count.
+            Groups historical runs by arXiv ID so repeated translations are easier to reuse.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -81,35 +83,42 @@ export function ArchivesPage() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Task</TableHead>
+                  <TableHead>Archive group</TableHead>
                   <TableHead>Status</TableHead>
+                  <TableHead>Runs</TableHead>
                   <TableHead>Artifacts</TableHead>
-                  <TableHead>Created</TableHead>
+                  <TableHead>Latest created</TableHead>
                   <TableHead className="text-right">Open</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {archivesQuery.data.items.map((entry) => (
-                  <TableRow key={entry.task.id}>
+                {archivesQuery.data.items.map((group) => (
+                  <TableRow key={group.group_key}>
                     <TableCell>
                       <div className="flex flex-col gap-1">
-                        <p className="font-medium">{entry.task.task_name}</p>
+                        <p className="font-medium">
+                          {group.arxiv_id ?? group.latest_task.task_name}
+                        </p>
                         <p className="text-xs text-muted-foreground">
-                          {entry.task.arxiv_id ?? entry.task.source_archive_name ?? "upload"}
+                          Latest task: {group.latest_task.task_name}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          {group.latest_task.source_archive_name ?? "Grouped archive history"}
                         </p>
                       </div>
                     </TableCell>
                     <TableCell>
                       <div className="flex flex-col gap-2">
-                        <StatusBadge status={entry.task.status} />
-                        <Badge variant="outline">{entry.task.current_stage}</Badge>
+                        <StatusBadge status={group.latest_task.status} />
+                        <Badge variant="outline">{group.latest_task.current_stage}</Badge>
                       </div>
                     </TableCell>
-                    <TableCell>{entry.artifact_count}</TableCell>
-                    <TableCell>{formatDateTime(entry.task.created_at)}</TableCell>
+                    <TableCell>{group.task_count}</TableCell>
+                    <TableCell>{group.artifact_count}</TableCell>
+                    <TableCell>{formatDateTime(group.latest_created_at)}</TableCell>
                     <TableCell className="text-right">
                       <Button asChild variant="outline">
-                        <Link to={`/tasks/${entry.task.id}`}>Open task</Link>
+                        <Link to={`/tasks/${group.latest_task.id}`}>Open latest</Link>
                       </Button>
                     </TableCell>
                   </TableRow>

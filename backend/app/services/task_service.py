@@ -23,7 +23,6 @@ from backend.app.repositories.task_repository import TaskRepository
 from backend.app.schemas.task import (
     ArchiveListResponse,
     ArtifactListResponse,
-    ArchiveListItem,
     FailureSummaryResponse,
     TaskCancelResponse,
     TaskArtifactResponse,
@@ -173,16 +172,23 @@ class TaskService:
                 detail="Terminal tasks cannot be canceled.",
             )
 
-        task.status = TaskStatus.CANCELED
-        task.current_stage = TaskStatus.CANCELED.value
-        task.finished_at = datetime.utcnow()
-        task.canceled_at = task.finished_at
+        cancel_time = datetime.utcnow()
+        task.canceled_at = cancel_time
+        if task.status == TaskStatus.PENDING:
+            task.status = TaskStatus.CANCELED
+            task.current_stage = TaskStatus.CANCELED.value
+            task.progress_percent = 100
+            task.finished_at = cancel_time
         self.repository.add_event(
             TaskEvent(
                 task=task,
                 stage=TaskStatus.CANCELED.value,
                 status=TaskStatus.CANCELED,
-                message="Task canceled by user request.",
+                message=(
+                    "Task canceled before execution started."
+                    if task.status == TaskStatus.CANCELED
+                    else "Cancellation requested while task is still running."
+                ),
             )
         )
         self.repository.commit()
@@ -216,9 +222,7 @@ class TaskService:
         created_from: datetime | None = None,
         created_to: datetime | None = None,
     ) -> ArchiveListResponse:
-        tasks, total = self.repository.list_tasks(
-            page=page,
-            page_size=page_size,
+        tasks = self.repository.list_tasks_unpaginated(
             status_filter=status_filter,
             task_name=task_name,
             arxiv_id=arxiv_id,
@@ -226,8 +230,11 @@ class TaskService:
             created_from=created_from,
             created_to=created_to,
         )
-        items = [self.archive_service.build_archive_item(task) for task in tasks]
-        return ArchiveListResponse(items=items, total=total, page=page, page_size=page_size)
+        grouped_items = self.archive_service.build_archive_groups(tasks)
+        total = len(grouped_items)
+        start = (page - 1) * page_size
+        end = start + page_size
+        return ArchiveListResponse(items=grouped_items[start:end], total=total, page=page, page_size=page_size)
 
     def get_failure_summary(self, *, limit: int = 20) -> FailureSummaryResponse:
         tasks, total = self.repository.list_tasks(

@@ -111,8 +111,18 @@ export type ArchiveItem = {
   artifact_count: number
 }
 
+export type ArchiveGroup = {
+  group_key: string
+  arxiv_id: string | null
+  task_count: number
+  artifact_count: number
+  latest_created_at: string
+  latest_task: TaskSummary
+  tasks: ArchiveItem[]
+}
+
 export type PaginatedArchives = {
-  items: ArchiveItem[]
+  items: ArchiveGroup[]
   total: number
   page: number
   page_size: number

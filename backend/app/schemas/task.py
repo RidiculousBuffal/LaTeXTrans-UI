@@ -130,8 +130,18 @@ class ArchiveListItem(APIModel):
     artifact_count: int
 
 
+class ArchiveGroupItem(APIModel):
+    group_key: str
+    arxiv_id: str | None
+    task_count: int
+    artifact_count: int
+    latest_created_at: datetime
+    latest_task: TaskSummaryResponse
+    tasks: list[ArchiveListItem]
+
+
 class ArchiveListResponse(APIModel):
-    items: list[ArchiveListItem]
+    items: list[ArchiveGroupItem]
     total: int
     page: int
     page_size: int
