@@ -588,7 +588,7 @@ class TranslatorAgent(BaseToolAgent):
         system_message = SystemMessage(system_prompt)
         human_message = HumanMessage(text)
         res = await self.agent.ainvoke([system_message, human_message])
-        return res.content
+        return self._extract_message_text(res.content)
 
     async def _request_llm_for_trans_with_terms(self,
                                                 system_prompt: str,
@@ -598,7 +598,7 @@ class TranslatorAgent(BaseToolAgent):
             f"{system_prompt}\nWhen translating, you must strictly use the following glossary for substitution. This is the highest priority rule to ensure the consistency of terms throughout the text.\n<Glossary>:\n{self.term_dict}\nNow, please translate the following new paragraph. Maintain the terminology from the glossary provided.")
         human_message = HumanMessage(f"[Current LaTeX Paragraph]:\n{text}")
         res = await self.agent.ainvoke([system_message, human_message])
-        return res.content
+        return self._extract_message_text(res.content)
 
     async def _request_llm_for_retrans_error_parts(self,
                                                    system_prompt: str,
@@ -610,14 +610,14 @@ class TranslatorAgent(BaseToolAgent):
         user_prompt = f"[Original]:\n{part['content']}\n[Translation]:\n{part['trans_content']}\n[Error]:\n{error_message}"
         human_message = HumanMessage(user_prompt)
         res = await self.agent.ainvoke([system_message, human_message])
-        return res.content
+        return self._extract_message_text(res.content)
 
     async def _request_llm_for_extract_terms(self, system_prompt, src, tgt,
                                              ) -> str:
         system_message = SystemMessage(system_prompt)
         human_message = HumanMessage(f"<en source>\n{src}\n<zh translation>\n{tgt}")
         res = await self.agent.ainvoke([system_message, human_message])
-        return res.content
+        return self._extract_message_text(res.content)
 
     async def _request_llm_for_summary(self, system_prompt: str, text: str) -> str:
         """
@@ -626,7 +626,7 @@ class TranslatorAgent(BaseToolAgent):
         system_message = SystemMessage(system_prompt)
         human_message = HumanMessage(f"<Text to summarize>:\n{text}\n<Summary>:\n")
         res = await self.agent.ainvoke([system_message, human_message])
-        return res.content
+        return self._extract_message_text(res.content)
 
     async def _request_llm_for_refine_summary(self, system_prompt: str, text: str, sum: str) -> str:
 
@@ -636,7 +636,31 @@ class TranslatorAgent(BaseToolAgent):
         system_message = SystemMessage(system_prompt)
         human_message = HumanMessage(f"<prev_summary>:\n{sum}\n<new_section>:\n{text}\n<refined_summary>:\n")
         res = await self.agent.ainvoke([system_message, human_message])
-        return res.content
+        return self._extract_message_text(res.content)
+
+    def _extract_message_text(self, content: Any) -> str:
+        if isinstance(content, str):
+            return content
+        if isinstance(content, list):
+            parts: list[str] = []
+            for item in content:
+                if isinstance(item, str):
+                    parts.append(item)
+                elif isinstance(item, dict):
+                    text = item.get("text")
+                    if isinstance(text, str):
+                        parts.append(text)
+                    elif isinstance(text, dict) and isinstance(text.get("value"), str):
+                        parts.append(text["value"])
+            if parts:
+                return "\n".join(parts)
+        if isinstance(content, dict):
+            text = content.get("text")
+            if isinstance(text, str):
+                return text
+            if isinstance(text, dict) and isinstance(text.get("value"), str):
+                return text["value"]
+        return str(content)
 
     def _updated_term_dict(self, text: str) -> None:
         """
