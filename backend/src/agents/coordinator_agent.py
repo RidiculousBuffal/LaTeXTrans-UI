@@ -1,6 +1,6 @@
 import os
 import shutil
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 from pathlib import Path
 import sys
 import asyncio
@@ -26,7 +26,8 @@ class CoordinatorAgent:
     def __init__(self, 
                  config: Dict[str, Any],
                  project_dir: str = None,
-                 output_dir: Optional[str] = None
+                 output_dir: Optional[str] = None,
+                 progress_callback: Optional[Callable[[dict[str, Any]], None]] = None,
                  ):
         """
         Initializes the CoordinatorAgent.
@@ -39,6 +40,7 @@ class CoordinatorAgent:
         self.output_dir = output_dir  # Output directory for parsed files
         self.loop = asyncio.new_event_loop()
         self.mode = config.get("mode", 0)
+        self.progress_callback = progress_callback
 
     def run_async(self, coro):
         """
@@ -63,7 +65,8 @@ class CoordinatorAgent:
         translator_agent = TranslatorAgent(config=self.config,
                                            project_dir=self.project_dir,
                                            output_dir=transed_project_dir,
-                                           trans_mode=self.mode)
+                                           trans_mode=self.mode,
+                                           progress_callback=self.progress_callback)
         await translator_agent.execute()  # await
         validator_agent = ValidatorAgent(config=self.config,
                                             project_dir=self.project_dir,

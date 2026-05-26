@@ -98,17 +98,33 @@ export function createUploadTask(payload: CreateUploadTaskPayload) {
     formData.append("task_name", payload.task_name)
   }
 
-  formData.append("source_language", payload.source_language)
-  formData.append("target_language", payload.target_language)
-  formData.append("model_name", payload.model_name)
-  formData.append("created_by", payload.created_by)
-  formData.append("env_profile", payload.env_profile)
+  if (payload.source_language) {
+    formData.append("source_language", payload.source_language)
+  }
+
+  if (payload.target_language) {
+    formData.append("target_language", payload.target_language)
+  }
+
+  if (payload.model_name) {
+    formData.append("model_name", payload.model_name)
+  }
+
+  if (payload.created_by) {
+    formData.append("created_by", payload.created_by)
+  }
+
+  if (payload.env_profile) {
+    formData.append("env_profile", payload.env_profile)
+  }
 
   if (payload.output_name) {
     formData.append("output_name", payload.output_name)
   }
 
-  formData.append("options", JSON.stringify(payload.options))
+  if (payload.options) {
+    formData.append("options", JSON.stringify(payload.options))
+  }
 
   return withApiError(
     api.post<TaskDetail>("/tasks/upload", formData, {

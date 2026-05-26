@@ -11,7 +11,9 @@ from backend.app.models.task import TaskArtifact, TaskArtifactType, TaskConfig, 
 from backend.app.repositories.task_repository import TaskRepository
 from backend.app.services.archive_service import ArchiveService
 from backend.app.services.task_service import TaskService
-from backend.app.workers.translation_runner import _ensure_not_canceled, _finalize_runtime_artifacts, _mark_canceled
+from backend.app.services.translation_service import TranslationService
+from backend.app.schemas.task import TaskCreateRequest
+from backend.app.workers.translation_runner import _ensure_not_canceled, _finalize_runtime_artifacts, _handle_translation_subprogress, _mark_canceled
 
 
 def make_session() -> Session:
@@ -37,7 +39,7 @@ def seed_task(
         arxiv_id=arxiv_id,
         source_archive_name=None if arxiv_id else f"{task_id}.tar.gz",
         source_language="en",
-        target_language="zh",
+        target_language="ch",
         model_name="gpt-4.1",
         status=status,
         current_stage=status.value,
@@ -51,7 +53,7 @@ def seed_task(
     task.configs.append(
         TaskConfig(
             env_profile="default",
-            config_snapshot_json={"paper_list": [arxiv_id] if arxiv_id else [], "target_language": "zh"},
+            config_snapshot_json={"paper_list": [arxiv_id] if arxiv_id else [], "target_language": "ch"},
         )
     )
     task.events.append(
@@ -238,3 +240,50 @@ def test_failure_summary_includes_failed_type_counts() -> None:
     assert summary.failed_stage_counts[TaskStatus.GENERATING.value] == 1
     assert summary.failed_type_counts["timeout"] == 1
     assert summary.failed_type_counts["compile_error"] == 1
+
+
+def test_handle_translation_subprogress_updates_task_state_and_event_log(tmp_path: Path) -> None:
+    session = make_session()
+    task = seed_task(session, task_id="subprogress", status=TaskStatus.TRANSLATING)
+    repository = TaskRepository(session)
+    event_log_path = tmp_path / "task-events.jsonl"
+    progress_state: dict[str, tuple[int, int]] = {}
+
+    _handle_translation_subprogress(
+        repository=repository,
+        task_id=task.id,
+        event_log_path=event_log_path,
+        payload={
+            "phase": "initial_translation",
+            "completed": 3,
+            "total": 20,
+            "message": "Initial translation progress: 3/20 sections completed.",
+        },
+        progress_state=progress_state,
+    )
+
+    refreshed = repository.get_task_by_id(task.id)
+    assert refreshed is not None
+    assert refreshed.current_stage == "TRANSLATING::INITIAL_TRANSLATION 3/20"
+    assert refreshed.progress_percent == 62
+    assert refreshed.events[-1].message == "Initial translation progress: 3/20 sections completed."
+    assert '"completed": 3' in event_log_path.read_text(encoding="utf-8")
+
+
+def test_config_snapshot_normalizes_string_mode_to_int() -> None:
+    session = make_session()
+    task = seed_task(session, task_id="mode-task", status=TaskStatus.PENDING, arxiv_id="2605.23618")
+    payload = TaskCreateRequest(
+        source_type=TaskSourceType.ARXIV,
+        arxiv_id="2605.23618",
+        source_language="en",
+        target_language="ch",
+        model_name="gpt-4.1",
+        options={"mode": "0", "update_term": "False", "user_term": ""},
+    )
+
+    snapshot = TranslationService().build_config_snapshot(task=task, payload=payload)
+
+    assert snapshot["mode"] == 0
+    assert isinstance(snapshot["mode"], int)
+    assert snapshot["target_language"] == "ch"

@@ -32,7 +32,7 @@ class Settings(BaseSettings):
     upload_tmp_root: str = "runtime/uploads"
     max_upload_bytes: int = 250 * 1024 * 1024
     default_source_language: str = "en"
-    default_target_language: str = "zh"
+    default_target_language: str = "ch"
     default_created_by: str = "internal-user"
     cors_origins: list[str] = ["http://localhost:5173", "http://127.0.0.1:5173"]
 

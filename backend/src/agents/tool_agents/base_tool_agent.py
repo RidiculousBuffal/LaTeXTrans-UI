@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Any, Dict, Optional
+from typing import Any, Callable, Dict, Optional
 import json
 import yaml
 import toml
@@ -19,7 +19,8 @@ class BaseToolAgent(ABC):
     def __init__(
         self,
         agent_name: str,
-        config: Optional[Dict[str, Any]] = None
+        config: Optional[Dict[str, Any]] = None,
+        progress_callback: Optional[Callable[[dict[str, Any]], None]] = None,
     ):
         """
         Initializes the BaseToolAgent.
@@ -31,9 +32,10 @@ class BaseToolAgent(ABC):
         """
         self.agent_name = agent_name
         self.config = config if config is not None else {}
+        self.progress_callback = progress_callback
         self.agent = ChatOpenAI(model=config["llm_config"].get("model", "gpt-4o"),
                                 base_url=config["llm_config"].get("base_url", None),
-                                api_key=config["llm_config"].get("api_key", None))
+                                api_key=config["llm_config"].get("api_key", None),use_responses_api=True,)
         
     def log(self, message: str, level: str = "info"):
         """
@@ -53,6 +55,11 @@ class BaseToolAgent(ABC):
             print(f"[{self.agent_name}] [ERROR] {message}")
         else:
             raise ValueError(f"Unknown log level: {level}")
+
+    def emit_progress(self, payload: dict[str, Any]) -> None:
+        if self.progress_callback is None:
+            return
+        self.progress_callback(payload)
 
     @abstractmethod
     def execute(self, data: Any, **kwargs: Any) -> Any:
@@ -102,5 +109,4 @@ class BaseToolAgent(ABC):
         elif file_format == "toml":
             with open(file_path, 'w', encoding='utf-8') as f:
                 toml.dump(data, f)
-
 

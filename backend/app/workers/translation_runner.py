@@ -65,6 +65,7 @@ def _run_task(*, task_id: str, db: Session) -> None:
 
     runtime_dirs = translation_service.ensure_runtime_dirs(task=task)
     config = dict(task.configs[-1].config_snapshot_json)
+    config["mode"] = translation_service.normalize_mode(config.get("mode", 0))
     config["tex_sources_dir"] = runtime_dirs["sources_dir"]
     config["output_dir"] = runtime_dirs["output_dir"]
     log_path = Path(runtime_dirs["runtime_dir"]) / "task.log"
@@ -75,6 +76,7 @@ def _run_task(*, task_id: str, db: Session) -> None:
     projects: list[str] = []
     log_path.touch(exist_ok=True)
     event_log_path.touch(exist_ok=True)
+    progress_state: dict[str, tuple[int, int]] = {}
 
     logger.info(
         "translation_task_started",
@@ -133,6 +135,13 @@ def _run_task(*, task_id: str, db: Session) -> None:
                     config=config,
                     project_dir=project_dir,
                     output_dir=runtime_dirs["output_dir"],
+                    progress_callback=lambda payload: _handle_translation_subprogress(
+                        repository=repository,
+                        task_id=task_id,
+                        event_log_path=event_log_path,
+                        payload=payload,
+                        progress_state=progress_state,
+                    ),
                 )
                 _ensure_not_canceled(repository=repository, task_id=task_id)
                 _set_status(
@@ -406,6 +415,68 @@ def _set_status(
     logger.info(
         "translation_task_status_changed",
         extra={"task_id": task.id, "status": status.value, "details": details or {}},
+    )
+
+
+def _handle_translation_subprogress(
+    *,
+    repository: TaskRepository,
+    task_id: str,
+    event_log_path: Path,
+    payload: dict[str, Any],
+    progress_state: dict[str, tuple[int, int]],
+) -> None:
+    phase = str(payload.get("phase") or "translation")
+    completed = int(payload.get("completed") or 0)
+    total = int(payload.get("total") or 0)
+    message = str(payload.get("message") or "Translation sub-progress updated.")
+
+    if total <= 0:
+        return
+
+    previous = progress_state.get(phase)
+    current = (completed, total)
+    if previous == current:
+        return
+    progress_state[phase] = current
+
+    task = _require_task(repository, task_id)
+    task.status = TaskStatus.TRANSLATING
+    task.current_stage = f"TRANSLATING::{phase.upper()} {completed}/{total}"
+
+    if phase == "initial_translation":
+        task.progress_percent = min(79, 60 + int((completed / total) * 15))
+    elif phase == "error_retry":
+        task.progress_percent = min(94, 80 + int((completed / total) * 14))
+
+    details = {
+        "phase": phase,
+        "completed": completed,
+        "total": total,
+        "message": message,
+    }
+    repository.add_event(
+        TaskEvent(
+            task=task,
+            stage=task.current_stage,
+            status=TaskStatus.TRANSLATING,
+            message=message,
+            details_json=details,
+        )
+    )
+    repository.commit()
+    _append_event_log(
+        event_log_path=event_log_path,
+        payload={
+            "timestamp": datetime.utcnow().isoformat(),
+            "status": TaskStatus.TRANSLATING.value,
+            "message": message,
+            "details": details,
+        },
+    )
+    logger.info(
+        "translation_task_subprogress_changed",
+        extra={"task_id": task.id, "phase": phase, "completed": completed, "total": total},
     )
 
 

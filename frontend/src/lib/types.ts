@@ -141,16 +141,16 @@ export type TaskListFilters = {
 }
 
 export type CreateArxivTaskPayload = {
-  task_name: string
   source_type: "arxiv"
   arxiv_id: string
-  source_language: string
-  target_language: string
-  model_name: string
-  created_by: string
-  env_profile: string
-  output_name: string
-  options: {
+  task_name?: string
+  source_language?: string
+  target_language?: string
+  model_name?: string
+  created_by?: string
+  env_profile?: string
+  output_name?: string
+  options?: {
     mode: string
     update_term: string
     user_term: string
@@ -160,13 +160,13 @@ export type CreateArxivTaskPayload = {
 export type CreateUploadTaskPayload = {
   file: File
   task_name?: string
-  source_language: string
-  target_language: string
-  model_name: string
-  created_by: string
-  env_profile: string
+  source_language?: string
+  target_language?: string
+  model_name?: string
+  created_by?: string
+  env_profile?: string
   output_name?: string
-  options: {
+  options?: {
     mode: string
     update_term: string
     user_term: string

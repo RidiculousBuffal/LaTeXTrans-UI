@@ -38,7 +38,7 @@ def create_upload_task(
     file: UploadFile = File(...),
     task_name: str | None = Form(default=None),
     source_language: str = Form(default="en"),
-    target_language: str = Form(default="zh"),
+    target_language: str = Form(default="ch"),
     model_name: str | None = Form(default=None),
     created_by: str | None = Form(default=None),
     env_profile: str = Form(default="default"),

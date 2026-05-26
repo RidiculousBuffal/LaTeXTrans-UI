@@ -15,7 +15,7 @@ class TaskCreateRequest(APIModel):
     arxiv_id: str | None = Field(default=None, max_length=64)
     source_archive_name: str | None = Field(default=None, max_length=255)
     source_language: str = Field(default="en", max_length=16)
-    target_language: str = Field(default="zh", max_length=16)
+    target_language: str = Field(default="ch", max_length=16)
     model_name: str | None = Field(default=None, max_length=128)
     created_by: str | None = Field(default=None, max_length=128)
     env_profile: str = Field(default="default", max_length=64)

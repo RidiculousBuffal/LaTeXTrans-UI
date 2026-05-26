@@ -4,13 +4,17 @@ import type { TaskSummary } from "@/lib/types"
 import { formatDateTime, formatPercent } from "@/lib/utils-format"
 
 export function TaskProgressCard({ task }: { task: TaskSummary }) {
+  const currentStageLabel = task.current_stage.startsWith("TRANSLATING::")
+    ? task.current_stage.replace("TRANSLATING::", "")
+    : task.current_stage
+
   return (
     <div className="flex flex-col gap-4 rounded-xl border bg-background p-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-col gap-1">
           <p className="text-sm font-medium">{task.task_name}</p>
           <p className="text-sm text-muted-foreground">
-            Current stage: {task.current_stage}
+            Current stage: {currentStageLabel}
           </p>
         </div>
         <StatusBadge status={task.status} />

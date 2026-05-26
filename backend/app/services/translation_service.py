@@ -24,7 +24,7 @@ class TranslationService:
             "source_archive_name": payload.source_archive_name,
             "source_language": payload.source_language,
             "target_language": payload.target_language,
-            "mode": payload.options.get("mode", 0),
+            "mode": self.normalize_mode(payload.options.get("mode", 0)),
             "update_term": payload.options.get("update_term", "False"),
             "user_term": payload.options.get("user_term", ""),
             "category": {},
@@ -41,6 +41,13 @@ class TranslationService:
                 "options": payload.options,
             },
         }
+
+    def normalize_mode(self, value: object) -> int:
+        if isinstance(value, int):
+            return value
+        if isinstance(value, str) and value.strip():
+            return int(value)
+        return 0
 
     def ensure_runtime_dirs(self, *, task: TranslationTask) -> dict[str, str]:
         workspace_dir = Path(task.workspace_dir)

@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import tarfile
 import zipfile
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -37,6 +38,7 @@ class PipelineService:
         config: dict[str, Any],
         project_dir: str,
         output_dir: str,
+        progress_callback: Callable[[dict[str, Any]], None] | None = None,
     ) -> None:
         from backend.src.agents.coordinator_agent import CoordinatorAgent
 
@@ -44,6 +46,7 @@ class PipelineService:
             config=config,
             project_dir=project_dir,
             output_dir=output_dir,
+            progress_callback=progress_callback,
         )
         coordinator.workflow_latextrans()
 

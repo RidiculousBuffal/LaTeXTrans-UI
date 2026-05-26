@@ -4,7 +4,7 @@ import re
 import sys
 import time
 from pathlib import Path
-from typing import Dict, Any, Optional, List
+from typing import Callable, Dict, Any, Optional, List
 
 import aiohttp
 import pandas as pd
@@ -15,6 +15,9 @@ from backend.src.agents.tool_agents.base_tool_agent import BaseToolAgent
 from backend.src.formats.latex.utils import *
 from backend.src.runtime_ui import st
 
+REPO_ROOT = Path(__file__).resolve().parents[4]
+TERMS_DIR = REPO_ROOT / "terms"
+
 
 class TranslatorAgent(BaseToolAgent):
     def __init__(self,
@@ -23,8 +26,9 @@ class TranslatorAgent(BaseToolAgent):
                  project_dir: Optional[str] = None,
                  output_dir: Optional[str] = None,
                  errors_report: Optional[List[Dict]] = None,
+                 progress_callback: Optional[Callable[[dict[str, Any]], None]] = None,
                  ):
-        super().__init__(agent_name="TranslatorAgent", config=config)
+        super().__init__(agent_name="TranslatorAgent", config=config, progress_callback=progress_callback)
         self.config = config
         if config.get("update_term") == "True":
             self.update_term = True
@@ -90,6 +94,16 @@ class TranslatorAgent(BaseToolAgent):
                 tasks = [process_section(i, sec) for i, sec in enumerate(sections)]
 
                 completed = 0
+                total = len(tasks)
+                if total > 0:
+                    self.emit_progress(
+                        {
+                            "phase": "initial_translation",
+                            "completed": 0,
+                            "total": total,
+                            "message": f"Initial translation started: 0/{total} sections completed.",
+                        }
+                    )
 
                 for future in tqdm(asyncio.as_completed(tasks), total=len(tasks), desc="Translating...",
                                    unit="section"):
@@ -97,6 +111,14 @@ class TranslatorAgent(BaseToolAgent):
                     sections[i] = translated_section
 
                     completed += 1
+                    self.emit_progress(
+                        {
+                            "phase": "initial_translation",
+                            "completed": completed,
+                            "total": total,
+                            "message": f"Initial translation progress: {completed}/{total} sections completed.",
+                        }
+                    )
 
                     sys.stderr = open(os.devnull, 'w')
                     process = int(5 + 90 * completed / len(tasks))
@@ -366,10 +388,28 @@ class TranslatorAgent(BaseToolAgent):
                     return i
 
             tasks_ErrorPart = [process_ErrorPart(i, error_report) for i, error_report in enumerate(self.errors_report)]
+            total_error_parts = len(tasks_ErrorPart)
+            if total_error_parts > 0:
+                self.emit_progress(
+                    {
+                        "phase": "error_retry",
+                        "completed": 0,
+                        "total": total_error_parts,
+                        "message": f"Error retry started: 0/{total_error_parts} parts completed.",
+                    }
+                )
             for future in tqdm(asyncio.as_completed(tasks_ErrorPart), total=len(tasks_ErrorPart), desc="Translating...",
                                unit="section"):
                 result = await future
                 completed += 1
+                self.emit_progress(
+                    {
+                        "phase": "error_retry",
+                        "completed": completed,
+                        "total": total_error_parts,
+                        "message": f"Error retry progress: {completed}/{total_error_parts} parts completed.",
+                    }
+                )
                 sys.stderr = open(os.devnull, 'w')
                 process_bar.progress(completed / len(tasks_ErrorPart))
                 status_text.text(
@@ -702,14 +742,17 @@ class TranslatorAgent(BaseToolAgent):
 
     def build_term_dict(self):
         if self.user_term:
-            df = pd.read_csv(self.user_term, header=None, names=['English Term', 'Chinese Translation'])
+            user_term_path = Path(self.user_term)
+            if not user_term_path.is_absolute():
+                user_term_path = REPO_ROOT / user_term_path
+            df = pd.read_csv(user_term_path, header=None, names=['English Term', 'Chinese Translation'])
             self.term_dict.update(zip(df['English Term'], df['Chinese Translation']))
         else:
             arxiv_id = os.path.basename(self.project_dir)
             if self.category.get(arxiv_id):
                 term_dict_loaded = False
                 for category in self.category[arxiv_id]:
-                    file_path = os.path.join('terms', f'{category}.csv')
+                    file_path = TERMS_DIR / f"{category}.csv"
                     try:
                         df = pd.read_csv(file_path, header=None, names=['English Term', 'Chinese Translation'])
                         self.term_dict.update(zip(df['English Term'], df['Chinese Translation']))
@@ -720,14 +763,14 @@ class TranslatorAgent(BaseToolAgent):
 
                 if not term_dict_loaded:
                     try:
-                        df = pd.read_csv('terms/default.csv', header=None,
+                        df = pd.read_csv(TERMS_DIR / "default.csv", header=None,
                                          names=['English Term', 'Chinese Translation'])
                         self.term_dict.update(zip(df['English Term'], df['Chinese Translation']))
                     except FileNotFoundError as e:
                         print(f"Error: Default terminology file not found: {e}")
             else:
                 try:
-                    df = pd.read_csv('terms/default.csv', header=None,
+                    df = pd.read_csv(TERMS_DIR / "default.csv", header=None,
                                      names=['English Term', 'Chinese Translation'])
                     self.term_dict.update(zip(df['English Term'], df['Chinese Translation']))
                 except FileNotFoundError as e:

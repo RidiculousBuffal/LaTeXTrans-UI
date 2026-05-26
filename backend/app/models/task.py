@@ -54,7 +54,7 @@ class TranslationTask(Base):
     arxiv_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     source_archive_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     source_language: Mapped[str] = mapped_column(String(16), nullable=False, default="en")
-    target_language: Mapped[str] = mapped_column(String(16), nullable=False, default="zh")
+    target_language: Mapped[str] = mapped_column(String(16), nullable=False, default="ch")
     model_name: Mapped[str] = mapped_column(String(128), nullable=False)
     status: Mapped[TaskStatus] = mapped_column(
         Enum(TaskStatus, native_enum=False),
