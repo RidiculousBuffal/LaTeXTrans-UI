@@ -103,6 +103,7 @@ export type ArtifactListResponse = {
 export type FailureSummary = {
   recent_failed_tasks: TaskSummary[]
   failed_stage_counts: Partial<Record<TaskStatus, number>>
+  failed_type_counts: Record<string, number>
   total_failed: number
 }
 

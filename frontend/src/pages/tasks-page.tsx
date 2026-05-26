@@ -122,7 +122,7 @@ export function TasksPage() {
           <CardHeader>
             <CardTitle>Failure pulse</CardTitle>
             <CardDescription>
-              Recent failed tasks and failed stage counts from the backend summary endpoint.
+              Recent failed tasks plus failed stage and failure type distributions from the backend summary endpoint.
             </CardDescription>
           </CardHeader>
           <CardContent className="flex flex-col gap-4">
@@ -138,6 +138,15 @@ export function TasksPage() {
                     ([stage, count]) => (
                       <Badge key={stage} variant="outline">
                         {stage}: {count}
+                      </Badge>
+                    )
+                  )}
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {Object.entries(failuresQuery.data?.failed_type_counts ?? {}).map(
+                    ([failureType, count]) => (
+                      <Badge key={failureType} variant="secondary">
+                        {failureType}: {count}
                       </Badge>
                     )
                   )}

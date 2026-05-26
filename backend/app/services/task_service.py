@@ -243,11 +243,15 @@ class TaskService:
             status_filter=TaskStatus.FAILED.value,
         )
         stage_counts: dict[str, int] = {}
+        type_counts: dict[str, int] = {}
         for task in tasks:
             stage_counts[task.current_stage] = stage_counts.get(task.current_stage, 0) + 1
+            failure_type = self._classify_failure_type(task.error_message)
+            type_counts[failure_type] = type_counts.get(failure_type, 0) + 1
         return FailureSummaryResponse(
             recent_failed_tasks=[TaskSummaryResponse.model_validate(task) for task in tasks],
             failed_stage_counts=stage_counts,
+            failed_type_counts=type_counts,
             total_failed=total,
         )
 
@@ -344,3 +348,24 @@ class TaskService:
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Only .zip, .tar, .tar.gz, or .tgz archives are supported.",
             )
+
+    def _classify_failure_type(self, error_message: str | None) -> str:
+        if not error_message:
+            return "unknown"
+
+        normalized = error_message.lower()
+        if "timeout" in normalized:
+            return "timeout"
+        if "api" in normalized or "openai" in normalized or "rate limit" in normalized:
+            return "model_call_error"
+        if "compile" in normalized or "latex" in normalized or ".pdf" in normalized:
+            return "compile_error"
+        if "archive" in normalized or "extract" in normalized or "zip" in normalized or "tar" in normalized:
+            return "input_archive_error"
+        if "download" in normalized or "arxiv" in normalized:
+            return "source_download_error"
+        if "upload" in normalized or "minio" in normalized or "bucket" in normalized:
+            return "artifact_upload_error"
+        if "json" in normalized or "metadata" in normalized:
+            return "metadata_error"
+        return "runtime_error"

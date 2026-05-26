@@ -7,7 +7,7 @@
 
 ## 1. 交付结论
 
-本轮已按审阅文档中的问题清单完成修复，覆盖：
+本轮已按审阅文档中的问题清单完成修复，并在 review 反馈后继续补齐了两个遗留点，覆盖：
 
 - P0-1：取消任务仅改状态、未真正中断执行
 - P0-2：失败路径未保证日志/元数据归档
@@ -15,11 +15,13 @@
 - P1-4：历史检索缺少时间范围前端入口
 - P1-5：同一 arXiv ID 聚合展示未实现
 - P1-6：结构化日志能力未真正接入
+- review follow-up：运行时 artifact 收尾上传的事务一致性问题
+- review follow-up：失败类型分布未实现
 
 当前状态：
 
 - 前后端主链路继续保持可用。
-- 审阅中指出的 6 个缺口均已补齐到“可运行、可验证”的状态。
+- 审阅中指出的 6 个缺口，以及 review follow-up 指出的 2 个遗留点，均已补齐到“可运行、可验证”的状态。
 - 已补充后端测试覆盖关键修复点。
 
 ## 2. 修复项对照
@@ -156,6 +158,44 @@
 - `backend/app/main.py`
 - `backend/app/workers/translation_runner.py`
 
+### 2.7 Review Follow-up: artifact 收尾上传事务修复
+
+修复内容：
+
+- 运行时 artifact 收尾上传从“整批 add 后统一 commit”改为“每个成功 artifact 单独 commit”。
+- 这样当后续某个 artifact 上传失败时：
+  - 不会把前面已经成功写入数据库的 artifact 记录一起回滚掉
+  - 不会出现 MinIO 中已有文件、数据库中却无对应 artifact 记录的状态不一致
+- 上传失败时仍会额外记录任务事件，保留失败证据。
+
+实现位置：
+
+- `backend/app/workers/translation_runner.py`
+
+### 2.8 Review Follow-up: 失败类型分布补齐
+
+修复内容：
+
+- `GET /api/tasks/failures/summary` 在原有 `failed_stage_counts` 之外，新增 `failed_type_counts`。
+- 当前基于 `error_message` 做轻量失败类型归类，输出例如：
+  - `timeout`
+  - `model_call_error`
+  - `compile_error`
+  - `input_archive_error`
+  - `source_download_error`
+  - `artifact_upload_error`
+  - `metadata_error`
+  - `runtime_error`
+  - `unknown`
+- 前端任务页右侧 Failure pulse 已同步展示 failure type counts。
+
+实现位置：
+
+- `backend/app/schemas/task.py`
+- `backend/app/services/task_service.py`
+- `frontend/src/lib/types.ts`
+- `frontend/src/pages/tasks-page.tsx`
+
 ## 3. 验证情况
 
 已完成验证：
@@ -177,6 +217,8 @@
 - 取消后进入终态 `CANCELED`
 - 取消事件会写入事件日志
 - 同一 `arxiv_id` 归档聚合结构正确
+- artifact 收尾上传在“先成功后失败”时不丢前面成功的数据库记录
+- failure summary 返回 `failed_type_counts`
 
 测试文件：
 
@@ -220,4 +262,3 @@
 - `frontend/src/lib/types.ts`
 - `frontend/src/pages/archives-page.tsx`
 - `frontend/src/pages/tasks-page.tsx`
-

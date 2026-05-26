@@ -122,6 +122,7 @@ class TaskLogsResponse(APIModel):
 class FailureSummaryResponse(APIModel):
     recent_failed_tasks: list[TaskSummaryResponse]
     failed_stage_counts: dict[str, int]
+    failed_type_counts: dict[str, int]
     total_failed: int
 
 

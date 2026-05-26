@@ -10,7 +10,8 @@ from backend.app.db.base import Base
 from backend.app.models.task import TaskArtifact, TaskArtifactType, TaskConfig, TaskEvent, TaskSourceType, TaskStatus, TranslationTask
 from backend.app.repositories.task_repository import TaskRepository
 from backend.app.services.archive_service import ArchiveService
-from backend.app.workers.translation_runner import _ensure_not_canceled, _mark_canceled
+from backend.app.services.task_service import TaskService
+from backend.app.workers.translation_runner import _ensure_not_canceled, _finalize_runtime_artifacts, _mark_canceled
 
 
 def make_session() -> Session:
@@ -167,3 +168,73 @@ def test_archive_service_groups_same_arxiv_id() -> None:
     assert groups[1].task_count == 2
     assert groups[1].artifact_count == 2
     assert groups[1].latest_task.id == "task-2"
+
+
+def test_finalize_runtime_artifacts_keeps_prior_successful_records_on_later_failure(tmp_path: Path) -> None:
+    session = make_session()
+    task = seed_task(session, task_id="artifact-task", status=TaskStatus.FAILED)
+    repository = TaskRepository(session)
+
+    metadata_path = tmp_path / "task-config.json"
+    log_path = tmp_path / "task.log"
+    event_log_path = tmp_path / "task-events.jsonl"
+    metadata_path.write_text("{}", encoding="utf-8")
+    log_path.write_text("log", encoding="utf-8")
+    event_log_path.write_text("{}", encoding="utf-8")
+
+    class FakeStorageService:
+        def __init__(self) -> None:
+            self.calls: list[TaskArtifactType] = []
+
+        def upload_path(self, *, task: TranslationTask, artifact_type: TaskArtifactType, file_path, metadata=None):
+            self.calls.append(artifact_type)
+            if artifact_type == TaskArtifactType.LOG:
+                raise RuntimeError("minio upload failed")
+            path = Path(file_path)
+            return TaskArtifact(
+                task=task,
+                artifact_type=artifact_type,
+                object_key=f"{task.id}/{artifact_type.value.lower()}/{path.name}",
+                file_name=path.name,
+                content_type="text/plain",
+                file_size=path.stat().st_size,
+                version=1,
+                metadata_json=metadata or {},
+            )
+
+    storage = FakeStorageService()
+    _finalize_runtime_artifacts(
+        repository=repository,
+        task_id=task.id,
+        storage_service=storage,  # type: ignore[arg-type]
+        metadata_path=metadata_path,
+        log_path=log_path,
+        event_log_path=event_log_path,
+    )
+
+    refreshed = repository.get_task_by_id(task.id)
+    assert refreshed is not None
+    artifact_names = {(artifact.artifact_type, artifact.file_name) for artifact in refreshed.artifacts}
+    assert (TaskArtifactType.METADATA, "task-config.json") in artifact_names
+    assert (TaskArtifactType.INTERMEDIATE_JSON, "task-events.jsonl") in artifact_names
+    assert (TaskArtifactType.LOG, "task.log") not in artifact_names
+    assert any("Failed to upload artifact: task.log" == event.message for event in refreshed.events)
+
+
+def test_failure_summary_includes_failed_type_counts() -> None:
+    session = make_session()
+    timeout_task = seed_task(session, task_id="failed-timeout", status=TaskStatus.FAILED)
+    timeout_task.error_message = "OpenAI API timeout while translating section 2"
+    timeout_task.current_stage = TaskStatus.TRANSLATING.value
+
+    compile_task = seed_task(session, task_id="failed-compile", status=TaskStatus.FAILED)
+    compile_task.error_message = "LaTeX compile failed: missing PDF output"
+    compile_task.current_stage = TaskStatus.GENERATING.value
+    session.commit()
+
+    summary = TaskService(session).get_failure_summary(limit=10)
+
+    assert summary.failed_stage_counts[TaskStatus.TRANSLATING.value] == 1
+    assert summary.failed_stage_counts[TaskStatus.GENERATING.value] == 1
+    assert summary.failed_type_counts["timeout"] == 1
+    assert summary.failed_type_counts["compile_error"] == 1

@@ -333,24 +333,24 @@ def _finalize_runtime_artifacts(
         if dedupe_key in uploaded_keys:
             continue
         try:
-            repository.add_artifact(
-                storage_service.upload_path(
-                    task=task,
-                    artifact_type=artifact_type,
-                    file_path=path,
-                    metadata=metadata,
-                )
+            artifact = storage_service.upload_path(
+                task=task,
+                artifact_type=artifact_type,
+                file_path=path,
+                metadata=metadata,
             )
+            repository.add_artifact(artifact)
+            repository.commit()
             uploaded_keys.add(dedupe_key)
         except Exception as exc:
-            logger.exception(
-                "task_artifact_upload_failed",
-                extra={"task_id": task_id, "artifact_type": artifact_type.value, "file_name": path.name},
-            )
             repository.rollback()
             task = repository.get_task_by_id(task_id)
             if not task:
                 return
+            logger.exception(
+                "task_artifact_upload_failed",
+                extra={"task_id": task_id, "artifact_type": artifact_type.value, "file_name": path.name},
+            )
             repository.add_event(
                 TaskEvent(
                     task=task,
@@ -361,8 +361,6 @@ def _finalize_runtime_artifacts(
                 )
             )
             repository.commit()
-
-    repository.commit()
 
 
 def _set_status(
