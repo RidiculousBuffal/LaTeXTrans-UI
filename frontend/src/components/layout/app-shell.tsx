@@ -1,0 +1,70 @@
+import { MoonIcon, SunIcon } from "lucide-react"
+import { NavLink, Outlet } from "react-router-dom"
+import { useTheme } from "next-themes"
+
+import { Button } from "@/components/ui/button"
+import { cn } from "@/lib/utils"
+
+const navigation = [
+  { to: "/", label: "Tasks" },
+  { to: "/tasks/new", label: "New Task" },
+  { to: "/archives", label: "Archives" },
+]
+
+export function AppShell() {
+  const { resolvedTheme, setTheme } = useTheme()
+
+  return (
+    <div className="min-h-svh bg-[radial-gradient(circle_at_top_left,_var(--color-primary)/0.08,_transparent_28%),linear-gradient(180deg,var(--background),color-mix(in_oklab,var(--background)_92%,var(--color-muted)))]">
+      <div className="mx-auto flex min-h-svh max-w-7xl flex-col px-4 py-4 sm:px-6 lg:px-8">
+        <header className="sticky top-4 z-10 mb-6 rounded-2xl border bg-background/90 px-4 py-3 shadow-sm backdrop-blur">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+            <div className="flex flex-col gap-1">
+              <p className="text-xs font-medium uppercase tracking-[0.24em] text-muted-foreground">
+                LaTeXTrans Control Plane
+              </p>
+              <h1 className="font-heading text-2xl font-semibold tracking-tight">
+                Translation tasks, archives, and runtime status
+              </h1>
+            </div>
+            <div className="flex items-center gap-2">
+              <nav className="flex flex-wrap gap-2">
+                {navigation.map((item) => (
+                  <NavLink
+                    key={item.to}
+                    to={item.to}
+                    end={item.to === "/"}
+                    className={({ isActive }) =>
+                      cn(
+                        "rounded-lg px-3 py-2 text-sm font-medium transition-colors",
+                        isActive
+                          ? "bg-primary text-primary-foreground"
+                          : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                      )
+                    }
+                  >
+                    {item.label}
+                  </NavLink>
+                ))}
+              </nav>
+              <Button
+                type="button"
+                variant="outline"
+                size="icon-sm"
+                onClick={() =>
+                  setTheme(resolvedTheme === "dark" ? "light" : "dark")
+                }
+              >
+                {resolvedTheme === "dark" ? <SunIcon /> : <MoonIcon />}
+                <span className="sr-only">Toggle theme</span>
+              </Button>
+            </div>
+          </div>
+        </header>
+        <main className="flex-1 pb-8">
+          <Outlet />
+        </main>
+      </div>
+    </div>
+  )
+}
