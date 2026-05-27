@@ -40,7 +40,7 @@ class Settings(BaseSettings):
     default_source_language: str = "en"
     default_target_language: str = "ch"
     default_created_by: str = "internal-user"
-    cors_origins: list[str] = ["http://localhost:5173", "http://127.0.0.1:5173"]
+    cors_origins: list[str] = ["*"]
 
     model_config = SettingsConfigDict(
         env_file=".env",
