@@ -7,33 +7,20 @@
  2. 配置方式由 TOML 改为 `.env` 环境变量。
  3. 改为前后端分离架构，并引入数据库管理任务状态与历史。
  4. 增加任务运行态持久化、产物管理，以及 MinIO 上传下载链路。
+ 5. 集成babeldoc ，支持直接翻译pdf
 
- `.env` 配置示例（当前后端）：
- ```env
- OPENAI_MODEL=
- OPENAI_BASE_URL=
- OPENAI_API_KEY=
+ `.env` 配置示例 参考 [.env.example](.env.example)
 
- BACKEND_DATABASE_URL=
- MYSQL_USERNAME=
- MYSQL_PASSWORD=
- MYSQL_HOST=
- MYSQL_PORT=
- MYSQL_DATABASE=
-
- MINIO_URL=
- MINIO_ACCESS_KEY=
- MINIO_SECRET_KEY=
- ```
 
 ## UI 示例
 ![img.png](imgs/img.png)
 ![img_1.png](imgs/img_1.png)
 ![img_2.png](imgs/img_2.png)
 ![img_3.png](imgs/img_3.png)
-
-
-
+![img_4.png](imgs/img_4.png)
+![img_5.png](imgs/img_5.png)
+![img_6.png](imgs/img_6.png)
+![img_7.png](imgs/img_7.png)
 
 
 

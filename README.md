@@ -8,30 +8,21 @@
  2. Replaced TOML-based runtime config with `.env`-based configuration.
  3. Refactored into frontend-backend separation and introduced database-backed task management.
  4. Added task runtime persistence, artifact management, and MinIO uploads for outputs.
+ 5. Integrated with babeldoc, can  directly translate pdf
 
- `.env` example (current backend):
- ```env
- OPENAI_MODEL=
- OPENAI_BASE_URL=
- OPENAI_API_KEY=
+ `.env` config example reference [.env.example](.env.example)
 
- BACKEND_DATABASE_URL=
- MYSQL_USERNAME=
- MYSQL_PASSWORD=
- MYSQL_HOST=
- MYSQL_PORT=
- MYSQL_DATABASE=
-
- MINIO_URL=
- MINIO_ACCESS_KEY=
- MINIO_SECRET_KEY=
- ```
 
 ## UI Example
 ![img.png](imgs/img.png)
 ![img_1.png](imgs/img_1.png)
 ![img_2.png](imgs/img_2.png)
 ![img_3.png](imgs/img_3.png)
+![img_4.png](imgs/img_4.png)
+![img_5.png](imgs/img_5.png)
+![img_6.png](imgs/img_6.png)
+![img_7.png](imgs/img_7.png)
+
 
 <div align="center">
 
