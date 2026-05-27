@@ -1,14 +1,22 @@
 from collections import defaultdict
 
-from backend.app.models.task import TranslationTask
+from backend.app.models.task import TaskArtifactType, TranslationTask
 from backend.app.schemas.task import ArchiveGroupItem, ArchiveListItem, TaskSummaryResponse
 
 
 class ArchiveService:
+    _VISIBLE_ARTIFACT_TYPES = frozenset(
+        {
+            TaskArtifactType.EXTRACTED_SOURCE,
+            TaskArtifactType.TRANSLATED_PROJECT,
+            TaskArtifactType.FINAL_PDF,
+        }
+    )
+
     def build_archive_item(self, task: TranslationTask) -> ArchiveListItem:
         return ArchiveListItem(
             task=TaskSummaryResponse.model_validate(task),
-            artifact_count=len(task.artifacts),
+            artifact_count=sum(1 for artifact in task.artifacts if artifact.artifact_type in self._VISIBLE_ARTIFACT_TYPES),
         )
 
     def build_archive_groups(self, tasks: list[TranslationTask]) -> list[ArchiveGroupItem]:

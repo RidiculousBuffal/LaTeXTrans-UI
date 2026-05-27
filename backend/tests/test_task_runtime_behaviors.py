@@ -169,11 +169,11 @@ def test_archive_service_groups_same_arxiv_id() -> None:
     assert groups[0].group_key == "task:upload-1"
     assert groups[1].group_key == "arxiv:2501.00001"
     assert groups[1].task_count == 2
-    assert groups[1].artifact_count == 2
+    assert groups[1].artifact_count == 0
     assert groups[1].latest_task.id == "task-2"
 
 
-def test_finalize_runtime_artifacts_keeps_prior_successful_records_on_later_failure(tmp_path: Path) -> None:
+def test_finalize_runtime_artifacts_skips_runtime_debug_uploads(tmp_path: Path) -> None:
     session = make_session()
     task = seed_task(session, task_id="artifact-task", status=TaskStatus.FAILED)
     repository = TaskRepository(session)
@@ -217,11 +217,8 @@ def test_finalize_runtime_artifacts_keeps_prior_successful_records_on_later_fail
 
     refreshed = repository.get_task_by_id(task.id)
     assert refreshed is not None
-    artifact_names = {(artifact.artifact_type, artifact.file_name) for artifact in refreshed.artifacts}
-    assert (TaskArtifactType.METADATA, "task-config.json") in artifact_names
-    assert (TaskArtifactType.INTERMEDIATE_JSON, "task-events.jsonl") in artifact_names
-    assert (TaskArtifactType.LOG, "task.log") not in artifact_names
-    assert any("Failed to upload artifact: task.log" == event.message for event in refreshed.events)
+    assert refreshed.artifacts == []
+    assert storage.calls == []
 
 
 def test_failure_summary_includes_failed_type_counts() -> None:
@@ -288,6 +285,76 @@ def test_config_snapshot_normalizes_string_mode_to_int() -> None:
     assert snapshot["mode"] == 0
     assert isinstance(snapshot["mode"], int)
     assert snapshot["target_language"] == "ch"
+
+
+def test_task_detail_configs_do_not_expose_llm_credentials() -> None:
+    session = make_session()
+    task = seed_task(session, task_id="mask-config", status=TaskStatus.PENDING, arxiv_id="2605.23618")
+    task.configs[0].config_snapshot_json = {
+        "paper_list": ["2605.23618"],
+        "llm_config": {
+            "model": "gpt-4.1",
+            "base_url": "https://api.example.com/v1",
+            "api_key": "sk-test-secret",
+        },
+    }
+    session.commit()
+
+    detail = TaskService(session).get_task_detail(task.id)
+    llm_config = detail.configs[0].config_snapshot_json["llm_config"]
+
+    assert llm_config["model"] == "gpt-4.1"
+    assert "base_url" not in llm_config
+    assert "api_key" not in llm_config
+
+
+def test_task_detail_and_artifact_list_only_expose_delivery_artifacts() -> None:
+    session = make_session()
+    task = seed_task(session, task_id="artifact-filter", status=TaskStatus.SUCCEEDED, arxiv_id="2605.23618")
+    task.artifacts.extend(
+        [
+            TaskArtifact(
+                artifact_type=TaskArtifactType.FINAL_PDF,
+                object_key="final.pdf",
+                file_name="final.pdf",
+                content_type="application/pdf",
+                file_size=1,
+                version=1,
+            ),
+            TaskArtifact(
+                artifact_type=TaskArtifactType.EXTRACTED_SOURCE,
+                object_key="source.tar.gz",
+                file_name="source.tar.gz",
+                content_type="application/gzip",
+                file_size=1,
+                version=1,
+            ),
+            TaskArtifact(
+                artifact_type=TaskArtifactType.LOG,
+                object_key="runtime.log",
+                file_name="runtime.log",
+                content_type="text/plain",
+                file_size=1,
+                version=1,
+            ),
+        ]
+    )
+    session.commit()
+
+    service = TaskService(session)
+    detail = service.get_task_detail(task.id)
+    listed = service.list_artifacts(task.id)
+    logs = service.list_logs(task.id)
+
+    assert {artifact.artifact_type for artifact in detail.artifacts} == {
+        TaskArtifactType.FINAL_PDF,
+        TaskArtifactType.EXTRACTED_SOURCE,
+    }
+    assert {artifact.artifact_type for artifact in listed.items} == {
+        TaskArtifactType.FINAL_PDF,
+        TaskArtifactType.EXTRACTED_SOURCE,
+    }
+    assert logs.items == []
 
 
 def test_run_task_marks_failed_when_pdf_missing(monkeypatch, tmp_path: Path) -> None:

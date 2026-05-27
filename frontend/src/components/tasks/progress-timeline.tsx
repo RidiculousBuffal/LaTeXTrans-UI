@@ -24,7 +24,7 @@ export function ProgressTimeline({ events }: { events: TaskEvent[] }) {
                 : CircleIcon
 
         return (
-          <div key={event.id} className="flex gap-3">
+          <div key={event.id} className="flex gap-3 ">
             <div className="flex w-5 flex-col items-center">
               <div className="mt-0.5 rounded-full border bg-background p-1">
                 <Icon className="size-3.5" />

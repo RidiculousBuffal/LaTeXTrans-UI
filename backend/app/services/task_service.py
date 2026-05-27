@@ -26,6 +26,7 @@ from backend.app.schemas.task import (
     FailureSummaryResponse,
     TaskCancelResponse,
     TaskArtifactResponse,
+    TaskConfigResponse,
     TaskCreateRequest,
     TaskDetailResponse,
     TaskListResponse,
@@ -39,6 +40,14 @@ from backend.app.services.translation_service import TranslationService
 
 
 class TaskService:
+    _VISIBLE_ARTIFACT_TYPES = frozenset(
+        {
+            TaskArtifactType.EXTRACTED_SOURCE,
+            TaskArtifactType.TRANSLATED_PROJECT,
+            TaskArtifactType.FINAL_PDF,
+        }
+    )
+
     def __init__(self, db: Session) -> None:
         self.db = db
         self.repository = TaskRepository(db)
@@ -198,17 +207,16 @@ class TaskService:
         task = self._require_task(task_id)
         return ArtifactListResponse(
             task_id=task.id,
-            items=[self._to_artifact_response(artifact) for artifact in task.artifacts],
+            items=[
+                self._to_artifact_response(artifact)
+                for artifact in task.artifacts
+                if self._is_visible_artifact(artifact)
+            ],
         )
 
     def list_logs(self, task_id: str) -> TaskLogsResponse:
         task = self._require_task(task_id)
-        log_artifacts = [
-            self._to_artifact_response(artifact)
-            for artifact in task.artifacts
-            if artifact.artifact_type == TaskArtifactType.LOG
-        ]
-        return TaskLogsResponse(task_id=task.id, items=log_artifacts)
+        return TaskLogsResponse(task_id=task.id, items=[])
 
     def list_archives(
         self,
@@ -329,9 +337,34 @@ class TaskService:
         summary = TaskSummaryResponse.model_validate(task)
         return TaskDetailResponse(
             **summary.model_dump(),
-            artifacts=[self._to_artifact_response(artifact) for artifact in task.artifacts],
+            artifacts=[
+                self._to_artifact_response(artifact)
+                for artifact in task.artifacts
+                if self._is_visible_artifact(artifact)
+            ],
             events=[event for event in task.events],
-            configs=[config for config in task.configs],
+            configs=[self._to_config_response(config) for config in task.configs],
+        )
+
+    def _is_visible_artifact(self, artifact: TaskArtifact) -> bool:
+        return artifact.artifact_type in self._VISIBLE_ARTIFACT_TYPES
+
+    def _to_config_response(self, config: TaskConfig) -> TaskConfigResponse:
+        sanitized_snapshot = dict(config.config_snapshot_json or {})
+        llm_config = sanitized_snapshot.get("llm_config")
+        if isinstance(llm_config, dict):
+            sanitized_snapshot["llm_config"] = {
+                key: value
+                for key, value in llm_config.items()
+                if key not in {"base_url", "api_key"}
+            }
+
+        return TaskConfigResponse(
+            id=config.id,
+            task_id=config.task_id,
+            env_profile=config.env_profile,
+            config_snapshot_json=sanitized_snapshot,
+            created_at=config.created_at,
         )
 
     def _sanitize_task_name(self, value: str) -> str:

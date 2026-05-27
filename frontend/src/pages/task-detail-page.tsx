@@ -10,7 +10,7 @@ import {
   SquareIcon,
 } from "lucide-react"
 
-import { cancelTask, getTask, listArtifacts, listLogs, retryTask } from "@/lib/api"
+import { cancelTask, getTask, listArtifacts, retryTask } from "@/lib/api"
 import { queryClient } from "@/lib/query-client"
 import { getTaskDetailPollingInterval } from "@/hooks/use-polling"
 import { Button } from "@/components/ui/button"
@@ -47,13 +47,6 @@ export function TaskDetailPage() {
   const artifactsQuery = useQuery({
     queryKey: ["task-artifacts", taskId],
     queryFn: () => listArtifacts(taskId),
-    enabled: Boolean(taskId),
-    refetchInterval: pollingInterval,
-  })
-
-  const logsQuery = useQuery({
-    queryKey: ["task-logs", taskId],
-    queryFn: () => listLogs(taskId),
     enabled: Boolean(taskId),
     refetchInterval: pollingInterval,
   })
@@ -148,8 +141,7 @@ export function TaskDetailPage() {
         <>
           <TaskProgressCard task={task} />
 
-          <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">
-            <div className="flex flex-col gap-6">
+          <div className="flex flex-col gap-6">
               <Card>
                 <CardHeader>
                   <CardTitle>Task metadata</CardTitle>
@@ -186,14 +178,14 @@ export function TaskDetailPage() {
                     Event timeline and backend-emitted details.
                   </CardDescription>
                 </CardHeader>
-                <CardContent>
+                <CardContent className={"max-h-[900px] overflow-y-scroll"}>
                   <ProgressTimeline events={task.events} />
                 </CardContent>
               </Card>
 
               <Card>
                 <CardHeader>
-                  <CardTitle>Artifacts and logs</CardTitle>
+                  <CardTitle>Artifacts</CardTitle>
                   <CardDescription>
                     Download links come from the backend pre-signed URLs.
                   </CardDescription>
@@ -202,7 +194,6 @@ export function TaskDetailPage() {
                   <Tabs defaultValue="artifacts">
                     <TabsList>
                       <TabsTrigger value="artifacts">Artifacts</TabsTrigger>
-                      <TabsTrigger value="logs">Logs</TabsTrigger>
                       <TabsTrigger value="config">Config snapshot</TabsTrigger>
                     </TabsList>
                     <TabsContent value="artifacts" className="pt-4">
@@ -224,13 +215,6 @@ export function TaskDetailPage() {
                             </div>
                           ))}
                         </div>
-                      )}
-                    </TabsContent>
-                    <TabsContent value="logs" className="pt-4">
-                      {logsQuery.isLoading ? (
-                        <Skeleton className="h-32 w-full" />
-                      ) : (
-                        <ArtifactTable items={logsQuery.data?.items ?? []} />
                       )}
                     </TabsContent>
                     <TabsContent value="config" className="pt-4">
@@ -278,7 +262,6 @@ export function TaskDetailPage() {
                 </p>
               </CardContent>
             </Card>
-          </div>
         </>
       )}
     </div>

@@ -151,10 +151,6 @@ export function listArtifacts(taskId: string) {
   return withApiError(api.get<ArtifactListResponse>(`/tasks/${taskId}/artifacts`))
 }
 
-export function listLogs(taskId: string) {
-  return withApiError(api.get<ArtifactListResponse>(`/tasks/${taskId}/logs`))
-}
-
 export function getFailureSummary(limit = 20) {
   return withApiError(
     api.get<FailureSummary>("/tasks/failures/summary", {

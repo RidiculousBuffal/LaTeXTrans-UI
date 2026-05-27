@@ -96,21 +96,11 @@ def _run_task(*, task_id: str, db: Session) -> None:
         )
 
         with log_path.open("a", encoding="utf-8") as log_file, contextlib.redirect_stdout(log_file), contextlib.redirect_stderr(log_file):
-            projects, source_archives = pipeline_service.prepare_sources(
+            projects, _source_archives = pipeline_service.prepare_sources(
                 config=config,
                 workspace_dir=runtime_dirs["workspace_dir"],
             )
             _ensure_not_canceled(repository=repository, task_id=task_id)
-
-            task = _require_task(repository, task_id)
-            for source_archive in source_archives:
-                repository.add_artifact(
-                    storage_service.upload_path(
-                        task=task,
-                        artifact_type=TaskArtifactType.SOURCE_ARCHIVE,
-                        file_path=source_archive,
-                    )
-                )
 
             for project_dir in projects:
                 _ensure_not_canceled(repository=repository, task_id=task_id)
@@ -329,52 +319,7 @@ def _finalize_runtime_artifacts(
     log_path: Path,
     event_log_path: Path,
 ) -> None:
-    task = repository.get_task_by_id(task_id)
-    if not task:
-        return
-
-    uploads = [
-        (TaskArtifactType.METADATA, metadata_path, {"kind": "task-config"}),
-        (TaskArtifactType.LOG, log_path, {"kind": "execution-log"}),
-        (TaskArtifactType.INTERMEDIATE_JSON, event_log_path, {"kind": "structured-event-log"}),
-    ]
-    uploaded_keys = {(artifact.artifact_type, artifact.file_name) for artifact in task.artifacts}
-
-    for artifact_type, path, metadata in uploads:
-        if not path.exists():
-            continue
-        dedupe_key = (artifact_type, path.name)
-        if dedupe_key in uploaded_keys:
-            continue
-        try:
-            artifact = storage_service.upload_path(
-                task=task,
-                artifact_type=artifact_type,
-                file_path=path,
-                metadata=metadata,
-            )
-            repository.add_artifact(artifact)
-            repository.commit()
-            uploaded_keys.add(dedupe_key)
-        except Exception as exc:
-            repository.rollback()
-            task = repository.get_task_by_id(task_id)
-            if not task:
-                return
-            logger.exception(
-                "task_artifact_upload_failed",
-                extra={"task_id": task_id, "artifact_type": artifact_type.value, "file_name": path.name},
-            )
-            repository.add_event(
-                TaskEvent(
-                    task=task,
-                    stage=task.current_stage,
-                    status=task.status,
-                    message=f"Failed to upload artifact: {path.name}",
-                    details_json={"artifact_type": artifact_type.value, "error": str(exc)},
-                )
-            )
-            repository.commit()
+    return
 
 
 def _set_status(
