@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 
 from backend.app.api.router import api_router
@@ -31,9 +31,34 @@ app.add_middleware(
 app.include_router(api_router, prefix=settings.api_prefix)
 
 
+@app.middleware("http")
+async def add_security_headers(request: Request, call_next):
+    response: Response = await call_next(request)
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("X-Frame-Options", "DENY")
+    response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+    response.headers.setdefault("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
+    response.headers.setdefault(
+        "Content-Security-Policy",
+        (
+            "default-src 'self'; "
+            "script-src 'self'; "
+            "style-src 'self' 'unsafe-inline'; "
+            "img-src 'self' data: blob:; "
+            "font-src 'self' data:; "
+            "connect-src 'self' https: http:; "
+            "object-src 'none'; "
+            "frame-ancestors 'none'; "
+            "base-uri 'self'; "
+            "form-action 'self'"
+        ),
+    )
+    return response
+
+
 @app.on_event("startup")
 def bootstrap_admin() -> None:
-    """Create admin user on startup if ADMIN_BOOTSTRAP_ENABLED."""
+    """Create admin user on startup if explicitly enabled."""
     if not settings.admin_bootstrap_enabled:
         return
     from backend.app.db.session import SessionLocal
@@ -57,6 +82,7 @@ def bootstrap_admin() -> None:
             db.commit()
     except Exception:
         db.rollback()
+        raise
     finally:
         db.close()
 

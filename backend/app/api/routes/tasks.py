@@ -1,9 +1,11 @@
 from datetime import datetime
 import json
 
-from fastapi import APIRouter, Depends, File, Form, Query, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, Query, Request, UploadFile, status
 from sqlalchemy.orm import Session
 
+from backend.app.core.config import get_settings
+from backend.app.core.rate_limit import rate_limiter
 from backend.app.db.session import get_db
 from backend.app.models.user import User
 from backend.app.schemas.task import (
@@ -30,14 +32,23 @@ def get_task_service(db: Session = Depends(get_db)) -> TaskService:
 @router.post("", response_model=TaskDetailResponse, status_code=status.HTTP_201_CREATED)
 def create_task(
     payload: TaskCreateRequest,
+    request: Request,
     service: TaskService = Depends(get_task_service),
     current_user: User = Depends(get_current_user),
 ) -> TaskDetailResponse:
+    settings = get_settings()
+    rate_limiter.enforce(
+        request=request,
+        scope="task-create",
+        limit=settings.rate_limit_task_create_limit,
+        window_seconds=settings.rate_limit_task_create_window_seconds,
+    )
     return service.create_task(payload, owner=current_user)
 
 
 @router.post("/upload", response_model=TaskDetailResponse, status_code=status.HTTP_201_CREATED)
 def create_upload_task(
+    request: Request,
     file: UploadFile = File(...),
     task_name: str | None = Form(default=None),
     source_language: str = Form(default="en"),
@@ -49,6 +60,13 @@ def create_upload_task(
     service: TaskService = Depends(get_task_service),
     current_user: User = Depends(get_current_user),
 ) -> TaskDetailResponse:
+    settings = get_settings()
+    rate_limiter.enforce(
+        request=request,
+        scope="task-create",
+        limit=settings.rate_limit_task_create_limit,
+        window_seconds=settings.rate_limit_task_create_window_seconds,
+    )
     parsed_options = json.loads(options)
     return service.create_upload_task(
         file=file,
@@ -65,6 +83,7 @@ def create_upload_task(
 
 @router.post("/pdf", response_model=TaskDetailResponse, status_code=status.HTTP_201_CREATED)
 def create_pdf_task(
+    request: Request,
     file: UploadFile = File(...),
     task_name: str | None = Form(default=None),
     target_language: str = Form(default="zh"),
@@ -74,6 +93,13 @@ def create_pdf_task(
     service: TaskService = Depends(get_task_service),
     current_user: User = Depends(get_current_user),
 ) -> TaskDetailResponse:
+    settings = get_settings()
+    rate_limiter.enforce(
+        request=request,
+        scope="task-create",
+        limit=settings.rate_limit_task_create_limit,
+        window_seconds=settings.rate_limit_task_create_window_seconds,
+    )
     parsed_options = json.loads(options)
     return service.create_pdf_task(
         file=file,

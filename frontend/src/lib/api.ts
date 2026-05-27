@@ -3,6 +3,7 @@ import axios from "axios"
 import type {
   AdminUserItem,
   AdminUserList,
+  AuthConfig,
   ArtifactListResponse,
   CreateArxivTaskPayload,
   CreatePdfTaskPayload,
@@ -22,15 +23,7 @@ import type {
 const api = axios.create({
   baseURL: import.meta.env.VITE_API_BASE_URL ?? "/api",
   timeout: 20_000,
-})
-
-// Inject JWT token from localStorage
-api.interceptors.request.use((config) => {
-  const token = localStorage.getItem("access_token")
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`
-  }
-  return config
+  withCredentials: true,
 })
 
 // Redirect to /login on 401
@@ -38,9 +31,14 @@ api.interceptors.response.use(
   (res) => res,
   (error) => {
     if (axios.isAxiosError(error) && error.response?.status === 401) {
-      localStorage.removeItem("access_token")
-      localStorage.removeItem("user_info")
-      if (!window.location.pathname.startsWith("/login") && !window.location.pathname.startsWith("/register")) {
+      const requestUrl = error.config?.url ?? ""
+      const isSessionProbe = requestUrl.endsWith("/auth/me") || requestUrl.endsWith("/auth/config")
+      if (
+        !isSessionProbe &&
+        !window.location.pathname.startsWith("/login") &&
+        !window.location.pathname.startsWith("/register") &&
+        !window.location.pathname.startsWith("/landing")
+      ) {
         window.location.href = "/login"
       }
     }
@@ -115,8 +113,16 @@ export function login(username: string, password: string) {
   return withApiError(api.post<LoginResponse>("/auth/login", { username, password }))
 }
 
+export function logout() {
+  return withApiError(api.post<void>("/auth/logout"))
+}
+
 export function getMe() {
   return withApiError(api.get<UserInfo>("/auth/me"))
+}
+
+export function getAuthConfig() {
+  return withApiError(api.get<AuthConfig>("/auth/config"))
 }
 
 // Tasks

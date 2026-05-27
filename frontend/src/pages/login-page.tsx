@@ -13,7 +13,7 @@ export default function LoginPage() {
   const [password, setPassword] = useState("")
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
-  const { setAuth } = useAuth()
+  const { registrationEnabled, setAuth } = useAuth()
   const navigate = useNavigate()
 
   async function handleSubmit(e: React.FormEvent) {
@@ -22,7 +22,7 @@ export default function LoginPage() {
     setLoading(true)
     try {
       const res = await login(username, password)
-      setAuth(res.access_token, res.user)
+      setAuth(res.user)
       navigate("/")
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Login failed")
@@ -69,12 +69,14 @@ export default function LoginPage() {
             <Button type="submit" className="w-full" disabled={loading}>
               {loading ? "Signing in..." : "Sign In"}
             </Button>
-            <p className="text-sm text-center text-muted-foreground">
-              No account?{" "}
-              <Link to="/register" className="underline">
-                Register
-              </Link>
-            </p>
+            {registrationEnabled && (
+              <p className="text-sm text-center text-muted-foreground">
+                No account?{" "}
+                <Link to="/register" className="underline">
+                  Register
+                </Link>
+              </p>
+            )}
           </form>
         </CardContent>
       </Card>

@@ -66,7 +66,7 @@ function HeroBackground() {
 
 export default function LandingPage() {
     const {resolvedTheme, setTheme} = useTheme()
-    const {user, isLoading} = useAuth()
+    const {user, isLoading, registrationEnabled} = useAuth()
     const navigate = useNavigate()
     const [scrolled, setScrolled] = useState(false)
 
@@ -143,12 +143,14 @@ export default function LandingPage() {
                         <Button variant="ghost" size="sm" asChild>
                             <Link to="/login">登录</Link>
                         </Button>
-                        <Button size="sm" asChild>
-                            <Link to="/register">
-                                免费注册
-                                <ArrowRightIcon className="ml-1 h-3.5 w-3.5"/>
-                            </Link>
-                        </Button>
+                        {registrationEnabled && (
+                            <Button size="sm" asChild>
+                                <Link to="/register">
+                                    免费注册
+                                    <ArrowRightIcon className="ml-1 h-3.5 w-3.5"/>
+                                </Link>
+                            </Button>
+                        )}
                     </div>
                 </div>
             </header>
@@ -184,12 +186,14 @@ export default function LandingPage() {
                     </div>
 
                     <div className="animate-fade-up-d3 mt-10 flex flex-wrap items-center justify-center gap-3">
-                        <Button size="lg" className="h-12 px-8 text-base shadow-lg shadow-primary/25" asChild>
-                            <Link to="/register">
-                                立即开始翻译
-                                <ArrowRightIcon className="ml-2 h-4 w-4"/>
-                            </Link>
-                        </Button>
+                        {registrationEnabled && (
+                            <Button size="lg" className="h-12 px-8 text-base shadow-lg shadow-primary/25" asChild>
+                                <Link to="/register">
+                                    立即开始翻译
+                                    <ArrowRightIcon className="ml-2 h-4 w-4"/>
+                                </Link>
+                            </Button>
+                        )}
                         <Button size="lg" variant="outline" className="h-12 px-8 text-base" asChild>
                             <Link to="/login">登录账户</Link>
                         </Button>

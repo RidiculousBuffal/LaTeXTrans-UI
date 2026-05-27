@@ -13,7 +13,7 @@ export default function RegisterPage() {
   const [password, setPassword] = useState("")
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
-  const { setAuth } = useAuth()
+  const { registrationEnabled, setAuth } = useAuth()
   const navigate = useNavigate()
 
   async function handleSubmit(e: React.FormEvent) {
@@ -24,7 +24,7 @@ export default function RegisterPage() {
       await register(username, password)
       // Auto-login after register
       const res = await login(username, password)
-      setAuth(res.access_token, res.user)
+      setAuth(res.user)
       navigate("/")
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Registration failed")
@@ -38,7 +38,11 @@ export default function RegisterPage() {
       <Card className="w-full max-w-sm">
         <CardHeader>
           <CardTitle>Register</CardTitle>
-          <CardDescription>Create a new LaTeXTrans account</CardDescription>
+          <CardDescription>
+            {registrationEnabled
+              ? "Create a new LaTeXTrans account"
+              : "Self-service registration is currently disabled"}
+          </CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
@@ -69,9 +73,14 @@ export default function RegisterPage() {
                 required
               />
             </div>
-            <Button type="submit" className="w-full" disabled={loading}>
+            <Button type="submit" className="w-full" disabled={loading || !registrationEnabled}>
               {loading ? "Creating account..." : "Create Account"}
             </Button>
+            {!registrationEnabled && (
+              <p className="text-sm text-center text-muted-foreground">
+                Contact an administrator to create an account.
+              </p>
+            )}
             <p className="text-sm text-center text-muted-foreground">
               Already have an account?{" "}
               <Link to="/login" className="underline">

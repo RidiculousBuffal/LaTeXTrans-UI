@@ -1,55 +1,59 @@
 import { createContext, useCallback, useContext, useEffect, useState } from "react"
 import type { ReactNode } from "react"
 import type { UserInfo } from "@/lib/types"
-import { getMe } from "@/lib/api"
+import { getAuthConfig, getMe, logout as apiLogout } from "@/lib/api"
 
 type AuthContextType = {
   user: UserInfo | null
   isLoading: boolean
-  setAuth: (token: string, user: UserInfo) => void
-  logout: () => void
+  registrationEnabled: boolean
+  setAuth: (user: UserInfo) => void
+  logout: () => Promise<void>
 }
 
 const AuthContext = createContext<AuthContextType>({
   user: null,
   isLoading: true,
+  registrationEnabled: false,
   setAuth: () => {},
-  logout: () => {},
+  logout: async () => {},
 })
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<UserInfo | null>(null)
   const [isLoading, setIsLoading] = useState(true)
+  const [registrationEnabled, setRegistrationEnabled] = useState(false)
 
   useEffect(() => {
-    const token = localStorage.getItem("access_token")
-    if (!token) {
-      setIsLoading(false)
-      return
-    }
-    getMe()
-      .then((me) => setUser(me))
-      .catch(() => {
-        localStorage.removeItem("access_token")
-        localStorage.removeItem("user_info")
+    Promise.allSettled([getAuthConfig(), getMe()])
+      .then(([configResult, meResult]) => {
+        if (configResult.status === "fulfilled") {
+          setRegistrationEnabled(configResult.value.registration_enabled)
+        }
+        if (meResult.status === "fulfilled") {
+          setUser(meResult.value)
+        } else {
+          setUser(null)
+        }
       })
       .finally(() => setIsLoading(false))
   }, [])
 
-  const setAuth = useCallback((token: string, userInfo: UserInfo) => {
-    localStorage.setItem("access_token", token)
-    localStorage.setItem("user_info", JSON.stringify(userInfo))
+  const setAuth = useCallback((userInfo: UserInfo) => {
     setUser(userInfo)
   }, [])
 
-  const logout = useCallback(() => {
-    localStorage.removeItem("access_token")
-    localStorage.removeItem("user_info")
+  const logout = useCallback(async () => {
+    try {
+      await apiLogout()
+    } catch {
+      // We still clear local state if the session is already gone server-side.
+    }
     setUser(null)
   }, [])
 
   return (
-    <AuthContext.Provider value={{ user, isLoading, setAuth, logout }}>
+    <AuthContext.Provider value={{ user, isLoading, registrationEnabled, setAuth, logout }}>
       {children}
     </AuthContext.Provider>
   )

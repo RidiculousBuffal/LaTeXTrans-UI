@@ -107,7 +107,7 @@ class StorageService:
             return self.client.presigned_get_object(
                 self.settings.minio_bucket_tasks,
                 object_key,
-                expires=expires or timedelta(hours=1),
+                expires=expires or timedelta(seconds=self.settings.artifact_download_url_expire_seconds),
             )
         except S3Error:
             return None

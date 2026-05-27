@@ -22,8 +22,6 @@ class UserInfo(BaseModel):
 
 
 class LoginResponse(BaseModel):
-    access_token: str
-    token_type: str = "bearer"
     expires_in: int
     user: UserInfo
 
@@ -34,3 +32,7 @@ class MeResponse(BaseModel):
     role: str
     quota_balance: int
     is_active: bool
+
+
+class AuthConfigResponse(BaseModel):
+    registration_enabled: bool

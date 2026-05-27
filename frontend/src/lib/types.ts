@@ -215,10 +215,12 @@ export type UserInfo = {
 }
 
 export type LoginResponse = {
-  access_token: string
-  token_type: string
   expires_in: number
   user: UserInfo
+}
+
+export type AuthConfig = {
+  registration_enabled: boolean
 }
 
 // Sharing types

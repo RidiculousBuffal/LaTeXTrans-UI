@@ -34,6 +34,7 @@ from backend.app.schemas.task import (
     TaskConfigResponse,
     TaskCreateRequest,
     TaskDetailResponse,
+    TaskEventResponse,
     TaskListResponse,
     TaskLogsResponse,
     TaskRetryResponse,
@@ -156,11 +157,7 @@ class TaskService:
         owner: User,
     ) -> TaskDetailResponse:
         self._validate_upload_file(file)
-
-        # Compute file hash for cache
-        file_bytes = file.file.read()
-        file_hash = hashlib.sha256(file_bytes).hexdigest()
-        file.file.seek(0)
+        upload_path, file_hash, _file_size = self._stream_upload_to_temp(file)
 
         model = model_name or self.settings.openai_model or "gpt-4.1"
         cache_service = CacheService(self.db)
@@ -192,6 +189,7 @@ class TaskService:
         )
 
         if cache_entry:
+            self._cleanup_temp_upload(upload_path)
             task = self._create_task_record(payload, owner=owner, result_source="CACHE_HIT", quota_cost=0)
             task.source_file_hash = file_hash
             task.cache_entry_id = cache_entry.id
@@ -233,9 +231,10 @@ class TaskService:
         runtime_dirs = self.translation_service.ensure_runtime_dirs(task=task)
         destination = Path(runtime_dirs["sources_dir"]) / Path(file.filename or "upload.tar.gz").name
         try:
-            with destination.open("wb") as output:
-                output.write(file_bytes)
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            shutil.move(str(upload_path), str(destination))
         except Exception as exc:
+            self._cleanup_temp_upload(upload_path)
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail=f"Failed to store upload: {exc}",
@@ -269,11 +268,7 @@ class TaskService:
             self.babeldoc_service.validate_pdf_file(file.filename)
         except ValueError as exc:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
-
-        # Compute file hash for cache
-        file_bytes = file.file.read()
-        file_hash = hashlib.sha256(file_bytes).hexdigest()
-        file.file.seek(0)
+        upload_path, file_hash, _file_size = self._stream_upload_to_temp(file)
 
         model = model_name or self.settings.openai_model or "gpt-4.1"
         cache_service = CacheService(self.db)
@@ -304,6 +299,7 @@ class TaskService:
         )
 
         if cache_entry:
+            self._cleanup_temp_upload(upload_path)
             task = self._create_task_record(payload, owner=owner, result_source="CACHE_HIT", quota_cost=0)
             task.source_file_hash = file_hash
             task.cache_entry_id = cache_entry.id
@@ -345,9 +341,10 @@ class TaskService:
         runtime_dirs = self.translation_service.ensure_runtime_dirs(task=task)
         destination = Path(runtime_dirs["sources_dir"]) / Path(file.filename or "document.pdf").name
         try:
-            with destination.open("wb") as output:
-                output.write(file_bytes)
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            shutil.move(str(upload_path), str(destination))
         except Exception as exc:
+            self._cleanup_temp_upload(upload_path)
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail=f"Failed to store PDF upload: {exc}",
@@ -392,7 +389,7 @@ class TaskService:
             db=self.db,
         )
         return TaskListResponse(
-            items=[TaskSummaryResponse.model_validate(task) for task in tasks],
+            items=[self._build_task_summary_response(task, current_user=current_user) for task in tasks],
             total=total,
             page=page,
             page_size=page_size,
@@ -404,7 +401,7 @@ class TaskService:
             access = AccessService(self.db)
             if not access.can_view_task(task, current_user):
                 raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied.")
-        return self._build_task_detail_response(task)
+        return self._build_task_detail_response(task, current_user=current_user)
 
     def retry_task(self, task_id: str, current_user: User) -> TaskRetryResponse:
         task = self._require_task(task_id)
@@ -466,25 +463,32 @@ class TaskService:
         self.repository.commit()
         return TaskCancelResponse(task=self.get_task_detail(task_id, current_user=current_user), message="Task canceled.")
 
-    def list_artifacts(self, task_id: str, current_user: User) -> ArtifactListResponse:
+    def list_artifacts(self, task_id: str, current_user: User | None = None) -> ArtifactListResponse:
         task = self._require_task(task_id)
-        access = AccessService(self.db)
-        if not access.can_view_task(task, current_user):
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied.")
+        if current_user is not None:
+            access = AccessService(self.db)
+            if not access.can_view_task(task, current_user):
+                raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied.")
         return ArtifactListResponse(
             task_id=task.id,
             items=[
-                self._to_artifact_response(artifact)
+                self._to_artifact_response(
+                    artifact,
+                    include_sensitive=current_user is None or current_user.role == UserRole.ADMIN,
+                )
                 for artifact in task.artifacts
                 if self._is_visible_artifact(artifact)
             ],
         )
 
-    def list_logs(self, task_id: str, current_user: User) -> TaskLogsResponse:
+    def list_logs(self, task_id: str, current_user: User | None = None) -> TaskLogsResponse:
         task = self._require_task(task_id)
-        access = AccessService(self.db)
-        if not access.can_view_task(task, current_user):
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied.")
+        if current_user is not None:
+            access = AccessService(self.db)
+            if not access.can_view_task(task, current_user):
+                raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied.")
+        if current_user is not None and current_user.role != UserRole.ADMIN:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Task runtime logs are restricted to admins.")
         if not task.workspace_dir:
             return TaskLogsResponse(task_id=task.id, exists=False, content="")
 
@@ -547,18 +551,21 @@ class TaskService:
             current_user=current_user,
             db=self.db,
         )
-        grouped_items = self.archive_service.build_archive_groups(tasks)
+        grouped_items = self.archive_service.build_archive_groups(
+            tasks,
+            summary_builder=lambda task: self._build_task_summary_response(task, current_user=current_user),
+        )
         total = len(grouped_items)
         start = (page - 1) * page_size
         end = start + page_size
         return ArchiveListResponse(items=grouped_items[start:end], total=total, page=page, page_size=page_size)
 
-    def get_failure_summary(self, *, limit: int = 20, current_user: User) -> FailureSummaryResponse:
+    def get_failure_summary(self, *, limit: int = 20, current_user: User | None = None) -> FailureSummaryResponse:
         tasks, total = self.repository.list_tasks(
             page=1,
             page_size=limit,
             status_filter=TaskStatus.FAILED.value,
-            scope="all" if current_user.role == UserRole.ADMIN else "mine",
+            scope="all" if current_user is None or current_user.role == UserRole.ADMIN else "mine",
             current_user=current_user,
             db=self.db,
         )
@@ -569,7 +576,7 @@ class TaskService:
             failure_type = self._classify_failure_type(task.error_message)
             type_counts[failure_type] = type_counts.get(failure_type, 0) + 1
         return FailureSummaryResponse(
-            recent_failed_tasks=[TaskSummaryResponse.model_validate(task) for task in tasks],
+            recent_failed_tasks=[self._build_task_summary_response(task, current_user=current_user) for task in tasks],
             failed_stage_counts=stage_counts,
             failed_type_counts=type_counts,
             total_failed=total,
@@ -593,9 +600,15 @@ class TaskService:
             return Path(payload.source_archive_name).stem
         return f"task-{datetime.utcnow().strftime('%Y%m%d%H%M%S')}"
 
-    def _to_artifact_response(self, artifact: TaskArtifact):
+    def _to_artifact_response(self, artifact: TaskArtifact, *, include_sensitive: bool) -> TaskArtifactResponse:
         response = TaskArtifactResponse.model_validate(artifact)
         response.download_url = self.storage_service.get_download_url(artifact.object_key)
+        metadata = dict(response.metadata_json or {})
+        if not include_sensitive:
+            metadata.pop("local_path", None)
+            metadata.pop("uploaded_from", None)
+            metadata.pop("source_directory", None)
+        response.metadata_json = metadata or None
         return response
 
     def _create_task_record(
@@ -679,23 +692,33 @@ class TaskService:
             )
             self.db.add(new_artifact)
 
-    def _build_task_detail_response(self, task: TranslationTask) -> TaskDetailResponse:
+    def _build_task_summary_response(self, task: TranslationTask, *, current_user: User | None) -> TaskSummaryResponse:
+        include_sensitive = current_user is None or current_user.role == UserRole.ADMIN
         summary = TaskSummaryResponse.model_validate(task)
+        if not include_sensitive:
+            summary.workspace_dir = None
+            summary.output_dir = None
+            summary.error_message = self._sanitize_error_message(summary.error_message)
+        return summary
+
+    def _build_task_detail_response(self, task: TranslationTask, *, current_user: User | None) -> TaskDetailResponse:
+        include_sensitive = current_user is None or current_user.role == UserRole.ADMIN
+        summary = self._build_task_summary_response(task, current_user=current_user)
         return TaskDetailResponse(
             **summary.model_dump(),
             artifacts=[
-                self._to_artifact_response(artifact)
+                self._to_artifact_response(artifact, include_sensitive=include_sensitive)
                 for artifact in task.artifacts
                 if self._is_visible_artifact(artifact)
             ],
-            events=[event for event in task.events],
-            configs=[self._to_config_response(config) for config in task.configs],
+            events=[self._sanitize_event(event, include_sensitive=include_sensitive) for event in task.events],
+            configs=[self._to_config_response(config, include_sensitive=include_sensitive) for config in task.configs],
         )
 
     def _is_visible_artifact(self, artifact: TaskArtifact) -> bool:
         return artifact.artifact_type in self._VISIBLE_ARTIFACT_TYPES
 
-    def _to_config_response(self, config: TaskConfig) -> TaskConfigResponse:
+    def _to_config_response(self, config: TaskConfig, *, include_sensitive: bool) -> TaskConfigResponse:
         sanitized_snapshot = dict(config.config_snapshot_json or {})
         llm_config = sanitized_snapshot.get("llm_config")
         if isinstance(llm_config, dict):
@@ -704,6 +727,16 @@ class TaskService:
                 for key, value in llm_config.items()
                 if key not in {"base_url", "api_key"}
             }
+        if not include_sensitive:
+            sanitized_snapshot.pop("tex_sources_dir", None)
+            sanitized_snapshot.pop("output_dir", None)
+            runtime = sanitized_snapshot.get("runtime")
+            if isinstance(runtime, dict):
+                sanitized_snapshot["runtime"] = {
+                    key: value
+                    for key, value in runtime.items()
+                    if key not in {"task_id"}
+                }
         return TaskConfigResponse(
             id=config.id,
             task_id=config.task_id,
@@ -726,6 +759,68 @@ class TaskService:
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Only .zip, .tar, .tar.gz, or .tgz archives are supported.",
             )
+
+    def _stream_upload_to_temp(self, file: UploadFile) -> tuple[Path, str, int]:
+        temp_root = Path(self.settings.upload_tmp_root)
+        temp_root.mkdir(parents=True, exist_ok=True)
+        suffix = Path(file.filename or "").suffix or ".upload"
+        temp_path = temp_root / f"{uuid.uuid4().hex}{suffix}"
+        digest = hashlib.sha256()
+        size = 0
+        try:
+            with temp_path.open("wb") as output:
+                while True:
+                    chunk = file.file.read(self.settings.upload_stream_chunk_bytes)
+                    if not chunk:
+                        break
+                    size += len(chunk)
+                    if size > self.settings.max_upload_bytes:
+                        raise HTTPException(
+                            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                            detail=f"Upload exceeds the {self.settings.max_upload_bytes} byte limit.",
+                        )
+                    digest.update(chunk)
+                    output.write(chunk)
+        except Exception:
+            self._cleanup_temp_upload(temp_path)
+            raise
+        return temp_path, digest.hexdigest(), size
+
+    def _cleanup_temp_upload(self, path: Path) -> None:
+        if path.exists():
+            path.unlink(missing_ok=True)
+
+    def _sanitize_error_message(self, error_message: str | None) -> str | None:
+        if not error_message:
+            return error_message
+        failure_type = self._classify_failure_type(error_message)
+        if failure_type == "timeout":
+            return "Task failed because an upstream request timed out."
+        if failure_type == "model_call_error":
+            return "Task failed while calling the language model service."
+        if failure_type == "compile_error":
+            return "Task failed while compiling translated output."
+        if failure_type == "input_archive_error":
+            return "Task failed while validating or extracting the uploaded source archive."
+        if failure_type == "source_download_error":
+            return "Task failed while downloading the source material."
+        if failure_type == "artifact_upload_error":
+            return "Task failed while publishing task artifacts."
+        if failure_type == "metadata_error":
+            return "Task failed while processing task metadata."
+        return "Task failed during runtime execution."
+
+    def _sanitize_event(self, event: TaskEvent, *, include_sensitive: bool) -> TaskEventResponse:
+        if include_sensitive:
+            return event
+        event_data = TaskEventResponse.model_validate(event)
+        details = dict(event_data.details_json or {})
+        for key in ("workspace_dir", "project_dir", "translated_project_dir", "output_dir", "translated_pdf", "command_path"):
+            details.pop(key, None)
+        if "error" in details and isinstance(details["error"], str):
+            details["error"] = self._sanitize_error_message(details["error"])
+        event_data.details_json = details or None
+        return event_data
 
     def _classify_failure_type(self, error_message: str | None) -> str:
         if not error_message:

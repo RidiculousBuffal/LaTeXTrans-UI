@@ -29,8 +29,8 @@ export function AppShell() {
   if (!user) {
     return <Navigate to="/landing" replace />
   }
-  function handleLogout() {
-    logout()
+  async function handleLogout() {
+    await logout()
     navigate("/login")
   }
 
@@ -100,7 +100,9 @@ export function AppShell() {
                     type="button"
                     variant="outline"
                     size="icon-sm"
-                    onClick={handleLogout}
+                    onClick={() => {
+                      void handleLogout()
+                    }}
                     title="Sign out"
                   >
                     <LogOutIcon />
