@@ -1,12 +1,24 @@
 import { createBrowserRouter, RouterProvider } from "react-router-dom"
 
+import { AuthProvider } from "@/lib/auth-context"
 import { AppShell } from "@/components/layout/app-shell"
 import { ArchivesPage } from "@/pages/archives-page"
 import { NewTaskPage } from "@/pages/new-task-page"
 import { TaskDetailPage } from "@/pages/task-detail-page"
 import { TasksPage } from "@/pages/tasks-page"
+import LoginPage from "@/pages/login-page"
+import RegisterPage from "@/pages/register-page"
+import AdminPage from "@/pages/admin-page"
 
 const router = createBrowserRouter([
+  {
+    path: "/login",
+    element: <LoginPage />,
+  },
+  {
+    path: "/register",
+    element: <RegisterPage />,
+  },
   {
     path: "/",
     element: <AppShell />,
@@ -27,12 +39,20 @@ const router = createBrowserRouter([
         path: "archives",
         element: <ArchivesPage />,
       },
+      {
+        path: "admin",
+        element: <AdminPage />,
+      },
     ],
   },
 ])
 
 function App() {
-  return <RouterProvider router={router} />
+  return (
+    <AuthProvider>
+      <RouterProvider router={router} />
+    </AuthProvider>
+  )
 }
 
 export default App

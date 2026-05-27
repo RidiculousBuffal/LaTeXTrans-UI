@@ -31,7 +31,6 @@ export function TaskFilters({ filters, onChange, onReset }: TaskFiltersProps) {
     filters.task_name,
     filters.arxiv_id,
     filters.status,
-    filters.created_by,
     filters.created_from,
     filters.created_to,
   ].filter((value) => Boolean(value)).length
@@ -92,19 +91,6 @@ export function TaskFilters({ filters, onChange, onReset }: TaskFiltersProps) {
               </SelectGroup>
             </SelectContent>
           </Select>
-        </FieldContent>
-      </Field>
-      <Field>
-        <FieldLabel htmlFor="created-by">Created by</FieldLabel>
-        <FieldContent>
-          <Input
-            id="created-by"
-            value={filters.created_by ?? ""}
-            onChange={(event) =>
-              onChange({ ...filters, page: 1, created_by: event.target.value })
-            }
-            placeholder="frontend-user"
-          />
         </FieldContent>
       </Field>
       <Field>

@@ -48,6 +48,10 @@ export type TaskSummary = {
   progress_percent: number
   error_message: string | null
   created_by: string
+  owner_user_id: string | null
+  visibility: "private" | "public"
+  result_source: "EXECUTED" | "CACHE_HIT"
+  quota_cost: number
   workspace_dir: string | null
   output_dir: string | null
   created_at: string
@@ -152,7 +156,7 @@ export type TaskListFilters = {
   status?: TaskStatus | ""
   task_name?: string
   arxiv_id?: string
-  created_by?: string
+  scope?: "mine" | "shared" | "public" | "all" | ""
   created_from?: string
   created_to?: string
 }
@@ -165,7 +169,6 @@ export type CreateArxivTaskPayload = {
   source_language?: string
   target_language?: string
   model_name?: string
-  created_by?: string
   env_profile?: string
   output_name?: string
   options?: {
@@ -181,7 +184,6 @@ export type CreateUploadTaskPayload = {
   source_language?: string
   target_language?: string
   model_name?: string
-  created_by?: string
   env_profile?: string
   output_name?: string
   options?: {
@@ -196,12 +198,53 @@ export type CreatePdfTaskPayload = {
   task_name?: string
   target_language?: string
   model_name?: string
-  created_by?: string
   env_profile?: string
   options?: {
     qps?: string
     pool_max_workers?: string
   }
+}
+
+// Auth types
+export type UserInfo = {
+  id: string
+  username: string
+  role: "user" | "admin"
+  quota_balance: number
+  is_active: boolean
+}
+
+export type LoginResponse = {
+  access_token: string
+  token_type: string
+  expires_in: number
+  user: UserInfo
+}
+
+// Sharing types
+export type SharingState = {
+  task_id: string
+  visibility: "private" | "public"
+  shared_users: Array<{ user_id: string; username: string }>
+}
+
+export type SharingUpdateRequest = {
+  visibility?: "private" | "public"
+  grant_usernames: string[]
+}
+
+// Admin types
+export type AdminUserItem = {
+  id: string
+  username: string
+  role: "user" | "admin"
+  is_active: boolean
+  quota_balance: number
+}
+
+export type AdminUserList = {
+  items: AdminUserItem[]
+  total: number
 }
 
 export const terminalStatuses: TaskStatus[] = [

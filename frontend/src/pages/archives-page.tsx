@@ -27,6 +27,7 @@ import {
 } from "@/components/ui/table"
 import { formatDateTime } from "@/lib/utils-format"
 import { StatusBadge } from "@/components/tasks/status-badge"
+import { useAuth } from "@/lib/auth-context"
 
 const defaultFilters: TaskListFilters = {
   page: 1,
@@ -34,18 +35,26 @@ const defaultFilters: TaskListFilters = {
   status: "",
   task_name: "",
   arxiv_id: "",
-  created_by: "",
+  scope: "mine",
   created_from: "",
   created_to: "",
 }
 
 export function ArchivesPage() {
   const [filters, setFilters] = useState<TaskListFilters>(defaultFilters)
+  const { user } = useAuth()
 
   const archivesQuery = useQuery({
     queryKey: ["archives", filters],
     queryFn: () => listArchives(filters),
   })
+
+  const scopeOptions = [
+    { value: "mine", label: "My Tasks" },
+    { value: "shared", label: "Shared with Me" },
+    { value: "public", label: "Public" },
+    ...(user?.role === "admin" ? [{ value: "all", label: "All (Admin)" }] : []),
+  ]
 
   return (
     <div className="flex flex-col gap-6">
@@ -57,6 +66,18 @@ export function ArchivesPage() {
           </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-5">
+          <div className="flex flex-wrap gap-2">
+            {scopeOptions.map((opt) => (
+              <Button
+                key={opt.value}
+                size="sm"
+                variant={filters.scope === opt.value ? "default" : "outline"}
+                onClick={() => setFilters((f) => ({ ...f, scope: opt.value as TaskListFilters["scope"], page: 1 }))}
+              >
+                {opt.label}
+              </Button>
+            ))}
+          </div>
           <TaskFilters
             filters={filters}
             onChange={setFilters}
@@ -146,3 +167,4 @@ export function ArchivesPage() {
     </div>
   )
 }
+

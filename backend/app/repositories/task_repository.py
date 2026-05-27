@@ -1,10 +1,12 @@
 from datetime import datetime
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session, selectinload
 
+from backend.app.models.sharing import TaskShareGrant
 from backend.app.models.task import TaskArtifact, TaskConfig, TaskEvent, TranslationTask
+from backend.app.models.user import User, UserRole
 
 
 class TaskRepository:
@@ -57,6 +59,9 @@ class TaskRepository:
         created_by: str | None = None,
         created_from: datetime | None = None,
         created_to: datetime | None = None,
+        scope: str = "mine",
+        current_user: User | None = None,
+        db: Session | None = None,
     ) -> tuple[list[TranslationTask], int]:
         filters = []
         if status_filter:
@@ -72,6 +77,12 @@ class TaskRepository:
         if created_to:
             filters.append(TranslationTask.created_at <= created_to)
 
+        # Scope / visibility filter
+        if current_user is not None:
+            scope_filter = self._build_scope_filter(current_user, scope, db or self.db)
+            if scope_filter is not None:
+                filters.append(scope_filter)
+
         stmt = (
             select(TranslationTask)
             .where(*filters)
@@ -84,6 +95,24 @@ class TaskRepository:
         items = list(self._scalars_with_retry(stmt).all())
         total = self._scalar_with_retry(count_stmt) or 0
         return items, total
+
+    def _build_scope_filter(self, user: User, scope: str, db: Session):
+        if user.role == UserRole.ADMIN and scope == "all":
+            return None  # No filter
+        if scope == "mine":
+            return TranslationTask.owner_user_id == user.id
+        elif scope == "public":
+            return TranslationTask.visibility == "public"
+        elif scope == "shared":
+            shared_ids = db.query(TaskShareGrant.task_id).filter_by(grantee_user_id=user.id).subquery()
+            return TranslationTask.id.in_(shared_ids)
+        else:
+            shared_ids = db.query(TaskShareGrant.task_id).filter_by(grantee_user_id=user.id).subquery()
+            return or_(
+                TranslationTask.owner_user_id == user.id,
+                TranslationTask.visibility == "public",
+                TranslationTask.id.in_(shared_ids),
+            )
 
     def list_tasks_unpaginated(
         self,

@@ -1,5 +1,5 @@
 import { useState } from "react"
-import { useMutation } from "@tanstack/react-query"
+import { useMutation, useQuery } from "@tanstack/react-query"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { useNavigate } from "react-router-dom"
@@ -7,10 +7,11 @@ import { toast } from "sonner"
 import { z } from "zod"
 import { FileArchiveIcon, FileTextIcon, GlobeIcon, Loader2Icon, UploadIcon } from "lucide-react"
 
-import { createArxivTask, createPdfTask, createUploadTask } from "@/lib/api"
+import { createArxivTask, createPdfTask, createUploadTask, getMe } from "@/lib/api"
 import { queryClient } from "@/lib/query-client"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Badge } from "@/components/ui/badge"
 import {
   Field,
   FieldContent,
@@ -41,6 +42,8 @@ type PdfFormValues = z.infer<typeof pdfSchema>
 export function NewTaskPage() {
   const [tab, setTab] = useState("arxiv")
   const navigate = useNavigate()
+
+  const meQuery = useQuery({ queryKey: ["me"], queryFn: getMe })
 
   const arxivForm = useForm<ArxivFormValues>({
     resolver: zodResolver(arxivSchema),
@@ -114,13 +117,22 @@ export function NewTaskPage() {
   const isSubmitting = arxivMutation.isPending || uploadMutation.isPending || pdfMutation.isPending
 
   return (
-    <div className="mx-auto grid w-full max-w-3xl gap-6">
+    <div className="mx-auto grid w-full gap-6">
       <Card>
         <CardHeader>
-          <CardTitle>Create a translation task</CardTitle>
-          <CardDescription>
-            Submit the source only. The backend fills in task names, languages, model settings, and runtime options.
-          </CardDescription>
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <CardTitle>Create a translation task</CardTitle>
+              <CardDescription>
+                Submit the source only. The backend fills in task names, languages, model settings, and runtime options.
+              </CardDescription>
+            </div>
+            {meQuery.data && (
+              <Badge variant="outline" className="shrink-0 mt-1">
+                {meQuery.data.quota_balance} quota remaining
+              </Badge>
+            )}
+          </div>
         </CardHeader>
         <CardContent>
           <Tabs value={tab} onValueChange={setTab}>

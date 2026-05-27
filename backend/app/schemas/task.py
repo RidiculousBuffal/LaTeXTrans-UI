@@ -85,6 +85,10 @@ class TaskSummaryResponse(APIModel):
     progress_percent: int
     error_message: str | None
     created_by: str
+    owner_user_id: str | None = None
+    visibility: str = "private"
+    result_source: str = "EXECUTED"
+    quota_cost: int = 1
     workspace_dir: str | None
     output_dir: str | None
     created_at: datetime

@@ -23,6 +23,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { Separator } from "@/components/ui/separator"
 import { Badge } from "@/components/ui/badge"
 import { formatDateTime } from "@/lib/utils-format"
+import { useAuth } from "@/lib/auth-context"
 
 const defaultFilters: TaskListFilters = {
   page: 1,
@@ -30,13 +31,14 @@ const defaultFilters: TaskListFilters = {
   status: "",
   task_name: "",
   arxiv_id: "",
-  created_by: "",
+  scope: "mine",
   created_from: "",
   created_to: "",
 }
 
 export function TasksPage() {
   const [filters, setFilters] = useState<TaskListFilters>(defaultFilters)
+  const { user } = useAuth()
 
   const tasksQuery = useQuery({
     queryKey: ["tasks", filters],
@@ -50,6 +52,13 @@ export function TasksPage() {
     refetchInterval: 10_000,
   })
 
+  const scopeOptions = [
+    { value: "mine", label: "My Tasks" },
+    { value: "shared", label: "Shared with Me" },
+    { value: "public", label: "Public" },
+    ...(user?.role === "admin" ? [{ value: "all", label: "All (Admin)" }] : []),
+  ]
+
   return (
     <div className="flex flex-col gap-6">
       <section className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_320px]">
@@ -62,6 +71,18 @@ export function TasksPage() {
               </CardDescription>
             </CardHeader>
             <CardContent className="flex flex-col gap-5">
+              <div className="flex flex-wrap gap-2">
+                {scopeOptions.map((opt) => (
+                  <Button
+                    key={opt.value}
+                    size="sm"
+                    variant={filters.scope === opt.value ? "default" : "outline"}
+                    onClick={() => setFilters((f) => ({ ...f, scope: opt.value as TaskListFilters["scope"], page: 1 }))}
+                  >
+                    {opt.label}
+                  </Button>
+                ))}
+              </div>
               <TaskSummaryCards tasks={tasksQuery.data} failures={failuresQuery.data} />
               <Separator />
               <TaskFilters
@@ -186,3 +207,4 @@ export function TasksPage() {
     </div>
   )
 }
+

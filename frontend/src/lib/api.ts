@@ -1,22 +1,51 @@
 import axios from "axios"
 
 import type {
+  AdminUserList,
   ArtifactListResponse,
   CreateArxivTaskPayload,
   CreatePdfTaskPayload,
   CreateUploadTaskPayload,
   FailureSummary,
+  LoginResponse,
   PaginatedArchives,
   PaginatedTasks,
+  SharingState,
+  SharingUpdateRequest,
   TaskDetail,
   TaskListFilters,
   TaskLogsResponse,
+  UserInfo,
 } from "@/lib/types"
 
 const api = axios.create({
   baseURL: import.meta.env.VITE_API_BASE_URL ?? "/api",
   timeout: 20_000,
 })
+
+// Inject JWT token from localStorage
+api.interceptors.request.use((config) => {
+  const token = localStorage.getItem("access_token")
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`
+  }
+  return config
+})
+
+// Redirect to /login on 401
+api.interceptors.response.use(
+  (res) => res,
+  (error) => {
+    if (axios.isAxiosError(error) && error.response?.status === 401) {
+      localStorage.removeItem("access_token")
+      localStorage.removeItem("user_info")
+      if (!window.location.pathname.startsWith("/login") && !window.location.pathname.startsWith("/register")) {
+        window.location.href = "/login"
+      }
+    }
+    return Promise.reject(error)
+  }
+)
 
 function buildSearchParams(filters: TaskListFilters) {
   return Object.fromEntries(
@@ -30,7 +59,6 @@ function buildSearchParams(filters: TaskListFilters) {
         ) {
           return [key, new Date(value).toISOString()]
         }
-
         return [key, value]
       })
   )
@@ -42,28 +70,26 @@ function getApiErrorMessage(error: unknown) {
     if (typeof detail === "string") {
       return detail
     }
-
     if (Array.isArray(detail)) {
       return detail
         .map((item) => item?.msg)
         .filter((msg): msg is string => typeof msg === "string")
         .join("; ")
     }
-
     return error.message
   }
-
   if (error instanceof Error) {
     return error.message
   }
-
   return "Unexpected API error"
 }
 
 export class ApiError extends Error {
-  constructor(message: string) {
+  status?: number
+  constructor(message: string, status?: number) {
     super(message)
     this.name = "ApiError"
+    this.status = status
   }
 }
 
@@ -72,10 +98,27 @@ async function withApiError<T>(promise: Promise<{ data: T }>) {
     const response = await promise
     return response.data
   } catch (error) {
+    if (axios.isAxiosError(error)) {
+      throw new ApiError(getApiErrorMessage(error), error.response?.status)
+    }
     throw new ApiError(getApiErrorMessage(error))
   }
 }
 
+// Auth
+export function register(username: string, password: string) {
+  return withApiError(api.post<UserInfo>("/auth/register", { username, password }))
+}
+
+export function login(username: string, password: string) {
+  return withApiError(api.post<LoginResponse>("/auth/login", { username, password }))
+}
+
+export function getMe() {
+  return withApiError(api.get<UserInfo>("/auth/me"))
+}
+
+// Tasks
 export function listTasks(filters: TaskListFilters) {
   return withApiError(
     api.get<PaginatedTasks>("/tasks", {
@@ -95,44 +138,17 @@ export function createArxivTask(payload: CreateArxivTaskPayload) {
 export function createUploadTask(payload: CreateUploadTaskPayload) {
   const formData = new FormData()
   formData.append("file", payload.file)
-
-  if (payload.task_name) {
-    formData.append("task_name", payload.task_name)
-  }
-
-  if (payload.source_language) {
-    formData.append("source_language", payload.source_language)
-  }
-
-  if (payload.target_language) {
-    formData.append("target_language", payload.target_language)
-  }
-
-  if (payload.model_name) {
-    formData.append("model_name", payload.model_name)
-  }
-
-  if (payload.created_by) {
-    formData.append("created_by", payload.created_by)
-  }
-
-  if (payload.env_profile) {
-    formData.append("env_profile", payload.env_profile)
-  }
-
-  if (payload.output_name) {
-    formData.append("output_name", payload.output_name)
-  }
-
-  if (payload.options) {
-    formData.append("options", JSON.stringify(payload.options))
-  }
+  if (payload.task_name) formData.append("task_name", payload.task_name)
+  if (payload.source_language) formData.append("source_language", payload.source_language)
+  if (payload.target_language) formData.append("target_language", payload.target_language)
+  if (payload.model_name) formData.append("model_name", payload.model_name)
+  if (payload.env_profile) formData.append("env_profile", payload.env_profile)
+  if (payload.output_name) formData.append("output_name", payload.output_name)
+  if (payload.options) formData.append("options", JSON.stringify(payload.options))
 
   return withApiError(
     api.post<TaskDetail>("/tasks/upload", formData, {
-      headers: {
-        "Content-Type": "multipart/form-data",
-      },
+      headers: { "Content-Type": "multipart/form-data" },
     })
   )
 }
@@ -140,50 +156,29 @@ export function createUploadTask(payload: CreateUploadTaskPayload) {
 export function createPdfTask(payload: CreatePdfTaskPayload) {
   const formData = new FormData()
   formData.append("file", payload.file)
-
-  if (payload.task_name) {
-    formData.append("task_name", payload.task_name)
-  }
-
-  if (payload.target_language) {
-    formData.append("target_language", payload.target_language)
-  }
-
-  if (payload.model_name) {
-    formData.append("model_name", payload.model_name)
-  }
-
-  if (payload.created_by) {
-    formData.append("created_by", payload.created_by)
-  }
-
-  if (payload.env_profile) {
-    formData.append("env_profile", payload.env_profile)
-  }
-
-  if (payload.options) {
-    formData.append("options", JSON.stringify(payload.options))
-  }
+  if (payload.task_name) formData.append("task_name", payload.task_name)
+  if (payload.target_language) formData.append("target_language", payload.target_language)
+  if (payload.model_name) formData.append("model_name", payload.model_name)
+  if (payload.env_profile) formData.append("env_profile", payload.env_profile)
+  if (payload.options) formData.append("options", JSON.stringify(payload.options))
 
   return withApiError(
     api.post<TaskDetail>("/tasks/pdf", formData, {
-      headers: {
-        "Content-Type": "multipart/form-data",
-      },
+      headers: { "Content-Type": "multipart/form-data" },
     })
   )
 }
 
 export function retryTask(taskId: string) {
-  return withApiError(
-    api.post<{ task: TaskDetail; message: string }>(`/tasks/${taskId}/retry`)
-  )
+  return withApiError(api.post<{ task: TaskDetail; message: string }>(`/tasks/${taskId}/retry`))
 }
 
 export function cancelTask(taskId: string) {
-  return withApiError(
-    api.post<{ task: TaskDetail; message: string }>(`/tasks/${taskId}/cancel`)
-  )
+  return withApiError(api.post<{ task: TaskDetail; message: string }>(`/tasks/${taskId}/cancel`))
+}
+
+export function deleteTask(taskId: string) {
+  return withApiError(api.delete<void>(`/tasks/${taskId}`))
 }
 
 export function listArtifacts(taskId: string) {
@@ -196,16 +191,51 @@ export function getTaskLogs(taskId: string) {
 
 export function getFailureSummary(limit = 20) {
   return withApiError(
-    api.get<FailureSummary>("/tasks/failures/summary", {
-      params: { limit },
-    })
+    api.get<FailureSummary>("/tasks/failures/summary", { params: { limit } })
   )
 }
 
+// Sharing
+export function getTaskSharing(taskId: string) {
+  return withApiError(api.get<SharingState>(`/tasks/${taskId}/sharing`))
+}
+
+export function updateTaskSharing(taskId: string, payload: SharingUpdateRequest) {
+  return withApiError(api.put<SharingState>(`/tasks/${taskId}/sharing`, payload))
+}
+
+// Archives
 export function listArchives(filters: TaskListFilters) {
   return withApiError(
-    api.get<PaginatedArchives>("/archives", {
-      params: buildSearchParams(filters),
-    })
+    api.get<PaginatedArchives>("/archives", { params: buildSearchParams(filters) })
   )
+}
+
+// Admin
+export function adminListUsers(page = 1, pageSize = 20) {
+  return withApiError(
+    api.get<AdminUserList>("/admin/users", { params: { page, page_size: pageSize } })
+  )
+}
+
+export function adminAdjustQuota(userId: string, delta: number, reason: string) {
+  return withApiError(
+    api.post<{ user_id: string; new_balance: number; delta: number }>(
+      `/admin/users/${userId}/quota-adjustments`,
+      { delta, reason }
+    )
+  )
+}
+
+export function adminCreateUser(payload: {
+  username: string
+  password: string
+  role: "user" | "admin"
+  initial_quota: number
+}) {
+  return withApiError(api.post<AdminUserItem>("/admin/users", payload))
+}
+
+export function adminChangePassword(userId: string, newPassword: string) {
+  return withApiError(api.patch(`/admin/users/${userId}/password`, { new_password: newPassword }))
 }

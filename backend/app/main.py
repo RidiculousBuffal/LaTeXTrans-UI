@@ -31,6 +31,36 @@ app.add_middleware(
 app.include_router(api_router, prefix=settings.api_prefix)
 
 
+@app.on_event("startup")
+def bootstrap_admin() -> None:
+    """Create admin user on startup if ADMIN_BOOTSTRAP_ENABLED."""
+    if not settings.admin_bootstrap_enabled:
+        return
+    from backend.app.db.session import SessionLocal
+    from backend.app.models.user import User, UserRole
+    from backend.app.services.auth_service import hash_password
+    from backend.app.services.quota_service import QuotaService
+
+    db = SessionLocal()
+    try:
+        existing = db.query(User).filter_by(username=settings.admin_bootstrap_username).first()
+        if not existing:
+            admin = User(
+                username=settings.admin_bootstrap_username,
+                password_hash=hash_password(settings.admin_bootstrap_password),
+                role=UserRole.ADMIN,
+                is_active=True,
+            )
+            db.add(admin)
+            db.flush()
+            QuotaService(db).initialize_quota(admin)
+            db.commit()
+    except Exception:
+        db.rollback()
+    finally:
+        db.close()
+
+
 @app.get("/healthz", tags=["health"])
 def healthcheck() -> dict[str, str]:
     return {"status": "ok"}

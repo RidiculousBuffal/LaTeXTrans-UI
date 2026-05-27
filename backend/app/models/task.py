@@ -5,7 +5,7 @@ import uuid
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import JSON, DateTime, Enum, ForeignKey, Index, Integer, String, Text, func
+from sqlalchemy import Boolean, JSON, DateTime, Enum, ForeignKey, Index, Integer, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from backend.app.db.base import Base
@@ -51,11 +51,22 @@ class TaskArtifactType(str, enum.Enum):
     INTERMEDIATE_JSON = "INTERMEDIATE_JSON"
 
 
+class TaskVisibility(str, enum.Enum):
+    PRIVATE = "private"
+    PUBLIC = "public"
+
+
+class TaskResultSource(str, enum.Enum):
+    EXECUTED = "EXECUTED"
+    CACHE_HIT = "CACHE_HIT"
+
+
 class TranslationTask(Base):
     __tablename__ = "translation_tasks"
     __table_args__ = (
         Index("ix_translation_tasks_status_created_at", "status", "created_at"),
         Index("ix_translation_tasks_arxiv_id_created_at", "arxiv_id", "created_at"),
+        Index("ix_translation_tasks_owner_user_id", "owner_user_id"),
     )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
@@ -83,6 +94,14 @@ class TranslationTask(Base):
     progress_percent: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_by: Mapped[str] = mapped_column(String(128), nullable=False, default="internal-user")
+    owner_user_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    visibility: Mapped[str] = mapped_column(String(16), nullable=False, default="private")
+    source_file_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    cache_entry_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    result_source: Mapped[str] = mapped_column(String(16), nullable=False, default="EXECUTED")
+    quota_cost: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    quota_charged: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    shared_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     workspace_dir: Mapped[str | None] = mapped_column(String(512), nullable=True)
     output_dir: Mapped[str | None] = mapped_column(String(512), nullable=True)
     created_at: Mapped[datetime] = mapped_column(

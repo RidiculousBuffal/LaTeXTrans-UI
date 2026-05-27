@@ -6,14 +6,18 @@ import {
   ArrowLeftIcon,
   DownloadIcon,
   FileTextIcon,
+  GlobeIcon,
+  LockIcon,
   Loader2Icon,
   RefreshCwIcon,
   SquareIcon,
+  SparklesIcon,
 } from "lucide-react"
 
-import { cancelTask, getTask, getTaskLogs, listArtifacts, retryTask } from "@/lib/api"
+import { cancelTask, getTask, getTaskLogs, getTaskSharing, listArtifacts, retryTask, updateTaskSharing } from "@/lib/api"
 import { queryClient } from "@/lib/query-client"
 import { getTaskDetailPollingInterval } from "@/hooks/use-polling"
+import { useAuth } from "@/lib/auth-context"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -30,12 +34,15 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { Skeleton } from "@/components/ui/skeleton"
+import { Input } from "@/components/ui/input"
 import { formatDateTime, formatFileSize, getErrorMessage } from "@/lib/utils-format"
 import { terminalStatuses } from "@/lib/types"
 
 export function TaskDetailPage() {
   const { taskId = "" } = useParams()
   const [detailTab, setDetailTab] = useState("artifacts")
+  const [shareUsername, setShareUsername] = useState("")
+  const { user } = useAuth()
 
   const taskQuery = useQuery({
     queryKey: ["task", taskId],
@@ -58,6 +65,12 @@ export function TaskDetailPage() {
     queryFn: () => getTaskLogs(taskId),
     enabled: Boolean(taskId) && detailTab === "logs",
     refetchInterval: detailTab === "logs" ? pollingInterval : false,
+  })
+
+  const sharingQuery = useQuery({
+    queryKey: ["task-sharing", taskId],
+    queryFn: () => getTaskSharing(taskId),
+    enabled: Boolean(taskId),
   })
 
   const retryMutation = useMutation({
@@ -88,9 +101,23 @@ export function TaskDetailPage() {
     },
   })
 
+  const sharingMutation = useMutation({
+    mutationFn: (req: Parameters<typeof updateTaskSharing>[1]) =>
+      updateTaskSharing(taskId, req),
+    onSuccess: () => {
+      toast.success("Sharing settings updated")
+      queryClient.invalidateQueries({ queryKey: ["task-sharing", taskId] })
+    },
+    onError: (error) => {
+      toast.error("Failed to update sharing", { description: getErrorMessage(error) })
+    },
+  })
+
   const task = taskQuery.data
   const canRetry = task ? task.status === "FAILED" || task.status === "CANCELED" : false
   const canCancel = task ? !terminalStatuses.includes(task.status) : false
+  const isOwner = task && user && task.owner_user_id === user.id
+  const sharing = sharingQuery.data
 
   const groupedArtifacts = useMemo(() => {
     const artifacts = artifactsQuery.data?.items ?? []
@@ -176,10 +203,114 @@ export function TaskDetailPage() {
                     <div className="flex items-center gap-2">
                       <StatusBadge status={task.status} />
                       <Badge variant="outline">{task.current_stage}</Badge>
+                      {task.result_source === "CACHE_HIT" && (
+                        <Badge variant="secondary" className="gap-1">
+                          <SparklesIcon className="size-3" />
+                          Cache hit
+                        </Badge>
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex flex-col gap-2">
+                    <p className="text-sm font-medium">Visibility</p>
+                    <div className="flex items-center gap-2">
+                      {task.visibility === "public" ? (
+                        <Badge variant="outline" className="gap-1">
+                          <GlobeIcon className="size-3" />
+                          Public
+                        </Badge>
+                      ) : (
+                        <Badge variant="outline" className="gap-1">
+                          <LockIcon className="size-3" />
+                          Private
+                        </Badge>
+                      )}
                     </div>
                   </div>
                 </CardContent>
               </Card>
+
+              {isOwner && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Sharing</CardTitle>
+                    <CardDescription>
+                      Control who can see this task. Toggle public or grant access to specific users.
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="flex flex-col gap-4">
+                    <div className="flex items-center gap-3">
+                      <Button
+                        size="sm"
+                        variant={sharing?.visibility === "public" ? "default" : "outline"}
+                        onClick={() =>
+                          sharingMutation.mutate({ visibility: "public", grant_usernames: (sharing?.shared_users ?? []).map((u) => u.username) })
+                        }
+                        disabled={sharingMutation.isPending}
+                      >
+                        <GlobeIcon className="size-4 mr-1" /> Public
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant={sharing?.visibility === "private" ? "default" : "outline"}
+                        onClick={() =>
+                          sharingMutation.mutate({ visibility: "private", grant_usernames: (sharing?.shared_users ?? []).map((u) => u.username) })
+                        }
+                        disabled={sharingMutation.isPending}
+                      >
+                        <LockIcon className="size-4 mr-1" /> Private
+                      </Button>
+                    </div>
+                    {sharing?.visibility === "private" && (
+                      <div className="flex flex-col gap-3">
+                        <p className="text-sm font-medium">Shared with</p>
+                        <div className="flex flex-wrap gap-2">
+                          {(sharing.shared_users ?? []).length === 0 && (
+                            <p className="text-sm text-muted-foreground">No individual shares.</p>
+                          )}
+                          {(sharing.shared_users ?? []).map((u) => (
+                            <Badge key={u.user_id} variant="secondary" className="gap-1">
+                              {u.username}
+                              <button
+                                className="ml-1 hover:text-destructive"
+                                onClick={() =>
+                                  sharingMutation.mutate({
+                                    visibility: sharing.visibility,
+                                    grant_usernames: (sharing.shared_users ?? []).filter((x) => x.user_id !== u.user_id).map((x) => x.username),
+                                  })
+                                }
+                              >
+                                ×
+                              </button>
+                            </Badge>
+                          ))}
+                        </div>
+                        <div className="flex gap-2">
+                          <Input
+                            placeholder="Username to share with"
+                            value={shareUsername}
+                            onChange={(e) => setShareUsername(e.target.value)}
+                            className="max-w-xs"
+                          />
+                          <Button
+                            size="sm"
+                            disabled={!shareUsername.trim() || sharingMutation.isPending}
+                            onClick={() => {
+                              sharingMutation.mutate({
+                                visibility: sharing.visibility,
+                                grant_usernames: [...(sharing.shared_users ?? []).map((u) => u.username), shareUsername.trim()],
+                              })
+                              setShareUsername("")
+                            }}
+                          >
+                            Add
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              )}
 
               <Card>
                 <CardHeader>
@@ -233,8 +364,8 @@ export function TaskDetailPage() {
                     </TabsContent>
                     <TabsContent value="config" className="pt-4">
                       <div className="flex flex-col gap-4">
-                        {task.configs.length > 0 ? (
-                          task.configs.map((config) => (
+                        {(task.configs ?? []).length > 0 ? (
+                          (task.configs ?? []).map((config) => (
                             <div key={config.id} className="rounded-xl border bg-muted/30 p-4">
                               <div className="mb-2 flex items-center justify-between gap-3">
                                 <p className="font-medium">{config.env_profile}</p>

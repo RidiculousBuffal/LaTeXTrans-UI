@@ -42,6 +42,25 @@ class Settings(BaseSettings):
     default_created_by: str = "internal-user"
     cors_origins: list[str] = ["*"]
 
+    # JWT Auth
+    jwt_secret_key: str = Field(default="changeme-please-set-in-env", alias="JWT_SECRET_KEY")
+    jwt_algorithm: str = Field(default="HS256", alias="JWT_ALGORITHM")
+    jwt_expire_minutes: int = Field(default=10080, alias="JWT_EXPIRE_MINUTES")  # 7 days
+
+    # User defaults
+    default_user_translation_quota: int = Field(default=0, alias="DEFAULT_USER_TRANSLATION_QUOTA")
+
+    # Admin bootstrap
+    admin_bootstrap_enabled: bool = Field(default=True, alias="ADMIN_BOOTSTRAP_ENABLED")
+    admin_bootstrap_username: str = Field(default="admin", alias="ADMIN_BOOTSTRAP_USERNAME")
+    admin_bootstrap_password: str = Field(default="admin123", alias="ADMIN_BOOTSTRAP_PASSWORD")
+    admin_tasks_bypass_quota: bool = Field(default=True, alias="ADMIN_TASKS_BYPASS_QUOTA")
+
+    # Cache
+    cache_enabled: bool = Field(default=True, alias="CACHE_ENABLED")
+    cache_version: int = Field(default=1, alias="CACHE_VERSION")
+    cache_build_stale_minutes: int = Field(default=60, alias="CACHE_BUILD_STALE_MINUTES")
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",

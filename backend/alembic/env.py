@@ -8,6 +8,7 @@ from sqlalchemy import engine_from_config, pool
 from backend.app.core.config import get_settings
 from backend.app.db.base import Base
 from backend.app.models import task  # noqa: F401
+from backend.app.models import user, quota, sharing, cache  # noqa: F401
 
 
 config = context.config

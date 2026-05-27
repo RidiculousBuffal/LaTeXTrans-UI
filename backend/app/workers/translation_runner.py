@@ -15,6 +15,7 @@ from backend.app.db.session import SessionLocal
 from backend.app.models.task import TaskArtifactType, TaskEngine, TaskEvent, TaskStatus, TranslationTask
 from backend.app.repositories.task_repository import TaskRepository
 from backend.app.services.babeldoc_service import BabelDocService
+from backend.app.services.cache_service import CacheService
 from backend.app.services.pipeline_service import PipelineService
 from backend.app.services.storage_service import StorageService
 from backend.app.services.translation_service import TranslationService
@@ -60,6 +61,7 @@ def _run_task(*, task_id: str, db: Session) -> None:
     pipeline_service = PipelineService()
     babeldoc_service = BabelDocService()
     storage_service = StorageService()
+    cache_service = CacheService(db)
 
     task = repository.get_task_by_id(task_id)
     if not task:
@@ -122,6 +124,14 @@ def _run_task(*, task_id: str, db: Session) -> None:
             event_log_path=event_log_path,
             set_finished=True,
         )
+        # Mark cache entry as READY so future requests can hit the cache
+        task = _require_task(repository, task_id)
+        if task.cache_entry_id:
+            try:
+                cache_service.mark_ready(task.cache_entry_id)
+                db.commit()
+            except Exception:
+                logger.exception("cache_mark_ready_failed", extra={"task_id": task_id, "cache_entry_id": task.cache_entry_id})
         logger.info(
             "translation_task_succeeded",
             extra={"task_id": task_id, "project_count": len(projects)},
@@ -131,6 +141,14 @@ def _run_task(*, task_id: str, db: Session) -> None:
         logger.info("translation_task_canceled", extra={"task_id": task_id})
     except Exception as exc:
         _mark_failed(repository=repository, task_id=task_id, exc=exc, event_log_path=event_log_path)
+        # Mark cache entry as FAILED so the slot can be re-used
+        task = repository.get_task_by_id(task_id)
+        if task and task.cache_entry_id:
+            try:
+                cache_service.mark_failed(task.cache_entry_id)
+                db.commit()
+            except Exception:
+                logger.exception("cache_mark_failed_failed", extra={"task_id": task_id})
         logger.exception("translation_task_failed", extra={"task_id": task_id})
     finally:
         _finalize_runtime_artifacts(
