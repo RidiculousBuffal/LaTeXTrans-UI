@@ -107,6 +107,16 @@ export type ArtifactListResponse = {
   items: TaskArtifact[]
 }
 
+export type TaskLogsResponse = {
+  task_id: string
+  path: string | null
+  exists: boolean
+  content: string
+  size_bytes: number
+  truncated: boolean
+  updated_at: string | null
+}
+
 export type FailureSummary = {
   recent_failed_tasks: TaskSummary[]
   failed_stage_counts: Partial<Record<TaskStatus, number>>

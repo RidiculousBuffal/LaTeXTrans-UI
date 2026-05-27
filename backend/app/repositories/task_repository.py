@@ -1,6 +1,7 @@
 from datetime import datetime
 
 from sqlalchemy import func, select
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session, selectinload
 
 from backend.app.models.task import TaskArtifact, TaskConfig, TaskEvent, TranslationTask
@@ -43,7 +44,7 @@ class TaskRepository:
                 selectinload(TranslationTask.configs),
             )
         )
-        return self.db.scalar(stmt)
+        return self._scalar_with_retry(stmt)
 
     def list_tasks(
         self,
@@ -80,8 +81,8 @@ class TaskRepository:
             .limit(page_size)
         )
         count_stmt = select(func.count()).select_from(TranslationTask).where(*filters)
-        items = list(self.db.scalars(stmt).all())
-        total = self.db.scalar(count_stmt) or 0
+        items = list(self._scalars_with_retry(stmt).all())
+        total = self._scalar_with_retry(count_stmt) or 0
         return items, total
 
     def list_tasks_unpaginated(
@@ -114,10 +115,32 @@ class TaskRepository:
             .options(selectinload(TranslationTask.artifacts))
             .order_by(TranslationTask.created_at.desc())
         )
-        return list(self.db.scalars(stmt).all())
+        return list(self._scalars_with_retry(stmt).all())
 
     def commit(self) -> None:
         self.db.commit()
 
     def rollback(self) -> None:
         self.db.rollback()
+
+    def _scalar_with_retry(self, stmt):
+        try:
+            return self.db.scalar(stmt)
+        except OperationalError as exc:
+            if not self._is_retryable_connection_error(exc):
+                raise
+            self.db.rollback()
+            return self.db.scalar(stmt)
+
+    def _scalars_with_retry(self, stmt):
+        try:
+            return self.db.scalars(stmt)
+        except OperationalError as exc:
+            if not self._is_retryable_connection_error(exc):
+                raise
+            self.db.rollback()
+            return self.db.scalars(stmt)
+
+    def _is_retryable_connection_error(self, exc: OperationalError) -> bool:
+        message = str(exc).lower()
+        return "lost connection to mysql server during query" in message or "server has gone away" in message

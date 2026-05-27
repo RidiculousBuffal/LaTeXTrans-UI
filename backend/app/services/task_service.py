@@ -271,7 +271,39 @@ class TaskService:
 
     def list_logs(self, task_id: str) -> TaskLogsResponse:
         task = self._require_task(task_id)
-        return TaskLogsResponse(task_id=task.id, items=[])
+        if not task.workspace_dir:
+            return TaskLogsResponse(task_id=task.id, exists=False, content="")
+
+        log_path = Path(task.workspace_dir) / "runtime" / "task.log"
+        if not log_path.exists():
+            return TaskLogsResponse(
+                task_id=task.id,
+                path=str(log_path),
+                exists=False,
+                content="",
+            )
+
+        max_bytes = 64 * 1024
+        size_bytes = log_path.stat().st_size
+        truncated = size_bytes > max_bytes
+
+        with log_path.open("rb") as handle:
+            if truncated:
+                handle.seek(-max_bytes, 2)
+            content = handle.read().decode("utf-8", errors="replace")
+
+        if truncated:
+            content = "[log truncated to last 64KB]\n" + content
+
+        return TaskLogsResponse(
+            task_id=task.id,
+            path=str(log_path),
+            exists=True,
+            content=content,
+            size_bytes=size_bytes,
+            truncated=truncated,
+            updated_at=datetime.utcfromtimestamp(log_path.stat().st_mtime),
+        )
 
     def list_archives(
         self,

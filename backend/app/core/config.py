@@ -16,6 +16,7 @@ class Settings(BaseSettings):
     mysql_host: str = Field(default="127.0.0.1", alias="MYSQL_HOST")
     mysql_port: int = Field(default=3306, alias="MYSQL_PORT")
     mysql_database: str = Field(default="latex_trans", alias="MYSQL_DATABASE")
+    mysql_pool_recycle: int = Field(default=1800, alias="MYSQL_POOL_RECYCLE")
     sql_echo: bool = False
 
     minio_url: str = Field(default="127.0.0.1:9000", alias="MINIO_URL")

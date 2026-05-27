@@ -10,6 +10,7 @@ import type {
   PaginatedTasks,
   TaskDetail,
   TaskListFilters,
+  TaskLogsResponse,
 } from "@/lib/types"
 
 const api = axios.create({
@@ -187,6 +188,10 @@ export function cancelTask(taskId: string) {
 
 export function listArtifacts(taskId: string) {
   return withApiError(api.get<ArtifactListResponse>(`/tasks/${taskId}/artifacts`))
+}
+
+export function getTaskLogs(taskId: string) {
+  return withApiError(api.get<TaskLogsResponse>(`/tasks/${taskId}/logs`))
 }
 
 export function getFailureSummary(limit = 20) {

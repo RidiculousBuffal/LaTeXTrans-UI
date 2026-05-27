@@ -4,6 +4,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 from sqlalchemy import create_engine
+from sqlalchemy import text
 from sqlalchemy.orm import Session, sessionmaker
 
 from backend.app.db.base import Base
@@ -365,7 +366,8 @@ def test_task_detail_and_artifact_list_only_expose_delivery_artifacts() -> None:
         TaskArtifactType.FINAL_PDF,
         TaskArtifactType.EXTRACTED_SOURCE,
     }
-    assert logs.items == []
+    assert logs.exists is False
+    assert logs.content == ""
 
 
 def test_run_task_marks_failed_when_pdf_missing(monkeypatch, tmp_path: Path) -> None:
@@ -460,10 +462,43 @@ def test_babeldoc_runtime_env_uses_workspace_local_home(tmp_path: Path) -> None:
 
     env = service.build_runtime_env(workspace_dir=tmp_path)
 
-    assert env["HOME"].startswith(str(tmp_path))
-    assert env["XDG_CACHE_HOME"].startswith(str(tmp_path))
-    assert Path(env["HOME"]).exists()
-    assert Path(env["XDG_CACHE_HOME"]).exists()
+    assert env["HOME"] == str(Path.home())
+    assert "XDG_CACHE_HOME" not in env or not env["XDG_CACHE_HOME"].startswith(str(tmp_path))
+
+
+def test_task_engine_enum_reads_lowercase_database_value() -> None:
+    session = make_session()
+    task = seed_task(session, task_id="engine-lowercase", status=TaskStatus.SUCCEEDED, arxiv_id="2605.10000")
+    session.execute(
+        text("UPDATE translation_tasks SET engine = 'latex' WHERE id = :task_id"),
+        {"task_id": task.id},
+    )
+    session.commit()
+    session.expire_all()
+
+    reloaded = TaskRepository(session).get_task_by_id(task.id)
+
+    assert reloaded is not None
+    assert reloaded.engine == TaskEngine.LATEX
+
+
+def test_list_logs_reads_local_runtime_log_file(tmp_path: Path) -> None:
+    session = make_session()
+    task = seed_task(session, task_id="log-task", status=TaskStatus.TRANSLATING, arxiv_id="2605.10001")
+    task.workspace_dir = str(tmp_path / "workspace")
+    session.commit()
+
+    runtime_dir = Path(task.workspace_dir) / "runtime"
+    runtime_dir.mkdir(parents=True, exist_ok=True)
+    log_path = runtime_dir / "task.log"
+    log_path.write_text("line1\nline2\n", encoding="utf-8")
+
+    response = TaskService(session).list_logs(task.id)
+
+    assert response.exists is True
+    assert response.path == str(log_path)
+    assert response.content == "line1\nline2\n"
+    assert response.size_bytes == len("line1\nline2\n".encode("utf-8"))
 
 
 def test_babeldoc_config_snapshot_records_engine_fields() -> None:

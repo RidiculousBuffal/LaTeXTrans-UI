@@ -124,7 +124,12 @@ class ArtifactListResponse(APIModel):
 
 class TaskLogsResponse(APIModel):
     task_id: str
-    items: list[TaskArtifactResponse]
+    path: str | None = None
+    exists: bool
+    content: str
+    size_bytes: int = 0
+    truncated: bool = False
+    updated_at: datetime | None = None
 
 
 class FailureSummaryResponse(APIModel):

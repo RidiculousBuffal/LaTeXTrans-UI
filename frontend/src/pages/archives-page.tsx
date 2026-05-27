@@ -6,7 +6,6 @@ import { ArchiveIcon } from "lucide-react"
 import { listArchives } from "@/lib/api"
 import type { TaskListFilters } from "@/lib/types"
 import { TaskFilters } from "@/components/tasks/task-filters"
-import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import {
@@ -110,7 +109,6 @@ export function ArchivesPage() {
                     <TableCell>
                       <div className="flex flex-col gap-2">
                         <StatusBadge status={group.latest_task.status} />
-                        <Badge variant="outline">{group.latest_task.current_stage}</Badge>
                       </div>
                     </TableCell>
                     <TableCell>{group.task_count}</TableCell>

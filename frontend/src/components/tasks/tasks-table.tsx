@@ -53,9 +53,6 @@ export function TasksTable({ tasks }: { tasks: TaskSummary[] }) {
             <TableCell className="align-top">
               <div className="flex flex-col gap-2">
                 <StatusBadge status={task.status} />
-                <span className="text-xs text-muted-foreground">
-                  {task.current_stage}
-                </span>
               </div>
             </TableCell>
             <TableCell className="align-top text-sm">{formatPercent(task.progress_percent)}</TableCell>

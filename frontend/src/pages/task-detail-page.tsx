@@ -1,16 +1,17 @@
-import { useMemo } from "react"
+import { useMemo, useState } from "react"
 import { useMutation, useQuery } from "@tanstack/react-query"
 import { Link, useParams } from "react-router-dom"
 import { toast } from "sonner"
 import {
   ArrowLeftIcon,
   DownloadIcon,
+  FileTextIcon,
   Loader2Icon,
   RefreshCwIcon,
   SquareIcon,
 } from "lucide-react"
 
-import { cancelTask, getTask, listArtifacts, retryTask } from "@/lib/api"
+import { cancelTask, getTask, getTaskLogs, listArtifacts, retryTask } from "@/lib/api"
 import { queryClient } from "@/lib/query-client"
 import { getTaskDetailPollingInterval } from "@/hooks/use-polling"
 import { Button } from "@/components/ui/button"
@@ -34,6 +35,7 @@ import { terminalStatuses } from "@/lib/types"
 
 export function TaskDetailPage() {
   const { taskId = "" } = useParams()
+  const [detailTab, setDetailTab] = useState("artifacts")
 
   const taskQuery = useQuery({
     queryKey: ["task", taskId],
@@ -47,8 +49,15 @@ export function TaskDetailPage() {
   const artifactsQuery = useQuery({
     queryKey: ["task-artifacts", taskId],
     queryFn: () => listArtifacts(taskId),
-    enabled: Boolean(taskId),
-    refetchInterval: pollingInterval,
+    enabled: Boolean(taskId) && detailTab === "artifacts",
+    refetchInterval: detailTab === "artifacts" ? pollingInterval : false,
+  })
+
+  const logsQuery = useQuery({
+    queryKey: ["task-logs", taskId],
+    queryFn: () => getTaskLogs(taskId),
+    enabled: Boolean(taskId) && detailTab === "logs",
+    refetchInterval: detailTab === "logs" ? pollingInterval : false,
   })
 
   const retryMutation = useMutation({
@@ -192,10 +201,14 @@ export function TaskDetailPage() {
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <Tabs defaultValue="artifacts">
+                  <Tabs value={detailTab} onValueChange={setDetailTab}>
                     <TabsList>
                       <TabsTrigger value="artifacts">Artifacts</TabsTrigger>
                       <TabsTrigger value="config">Config snapshot</TabsTrigger>
+                      <TabsTrigger value="logs">
+                        <FileTextIcon data-icon="inline-start" />
+                        Runtime log
+                      </TabsTrigger>
                     </TabsList>
                     <TabsContent value="artifacts" className="pt-4">
                       {artifactsQuery.isLoading ? (
@@ -241,6 +254,16 @@ export function TaskDetailPage() {
                         )}
                       </div>
                     </TabsContent>
+                    <TabsContent value="logs" className="pt-4">
+                      <LogViewer
+                        isLoading={logsQuery.isLoading}
+                        content={logsQuery.data?.content ?? ""}
+                        exists={logsQuery.data?.exists ?? false}
+                        truncated={logsQuery.data?.truncated ?? false}
+                        updatedAt={logsQuery.data?.updated_at ?? null}
+                        path={logsQuery.data?.path ?? null}
+                      />
+                    </TabsContent>
                   </Tabs>
                 </CardContent>
               </Card>
@@ -257,6 +280,7 @@ export function TaskDetailPage() {
                 <p>Detail page polling slows to 3 seconds and automatically stops once the task reaches a terminal status.</p>
                 <p>Retry is only enabled for `FAILED` and `CANCELED` tasks, matching the backend contract.</p>
                 <p>Cancel is disabled for terminal tasks. If the backend returns a `409`, the toast will surface that detail directly.</p>
+                <p>BabelDOC runtime logs are read from the local task workspace and are not uploaded to artifacts.</p>
                 <p>Error summary:</p>
                 <p className="rounded-lg bg-destructive/8 p-3 text-destructive">
                   {task.error_message ?? "No error summary provided."}
@@ -330,5 +354,46 @@ function ArtifactTable({
         ))}
       </TableBody>
     </Table>
+  )
+}
+
+function LogViewer({
+  isLoading,
+  content,
+  exists,
+  truncated,
+  updatedAt,
+  path,
+}: {
+  isLoading: boolean
+  content: string
+  exists: boolean
+  truncated: boolean
+  updatedAt: string | null
+  path: string | null
+}) {
+  if (isLoading) {
+    return <Skeleton className="h-64 w-full" />
+  }
+
+  if (!exists) {
+    return (
+      <div className="rounded-xl border border-dashed p-4 text-sm text-muted-foreground">
+        Runtime log file has not been created yet.
+      </div>
+    )
+  }
+
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+        <Badge variant="outline">{truncated ? "Last 64KB" : "Full file"}</Badge>
+        <span>Updated {formatDateTime(updatedAt)}</span>
+        {path ? <span className="truncate">Path: {path}</span> : null}
+      </div>
+      <pre className="max-h-[520px] overflow-auto rounded-xl border bg-muted/20 p-4 text-xs leading-5 text-foreground">
+        {content || "Log file is currently empty."}
+      </pre>
+    </div>
   )
 }

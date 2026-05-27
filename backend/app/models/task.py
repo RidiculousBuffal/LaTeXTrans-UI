@@ -22,6 +22,10 @@ class TaskEngine(str, enum.Enum):
     BABELDOC = "babeldoc"
 
 
+def _enum_values(enum_type: type[enum.Enum]) -> list[str]:
+    return [member.value for member in enum_type]
+
+
 class TaskStatus(str, enum.Enum):
     PENDING = "PENDING"
     DOWNLOADING = "DOWNLOADING"
@@ -57,7 +61,7 @@ class TranslationTask(Base):
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     task_name: Mapped[str] = mapped_column(String(255), nullable=False)
     engine: Mapped[TaskEngine] = mapped_column(
-        Enum(TaskEngine, native_enum=False),
+        Enum(TaskEngine, native_enum=False, values_callable=_enum_values),
         nullable=False,
         default=TaskEngine.LATEX,
     )

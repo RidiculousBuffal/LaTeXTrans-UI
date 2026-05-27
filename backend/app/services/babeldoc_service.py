@@ -39,16 +39,9 @@ class BabelDocService:
             raise ValueError("Only .pdf files are supported.")
 
     def build_runtime_env(self, *, workspace_dir: str | Path) -> dict[str, str]:
-        workspace = Path(workspace_dir)
-        home_dir = workspace / "runtime" / "babeldoc-home"
-        home_dir.mkdir(parents=True, exist_ok=True)
-        cache_dir = home_dir / ".cache"
-        cache_dir.mkdir(parents=True, exist_ok=True)
-
-        env = os.environ.copy()
-        env["HOME"] = str(home_dir)
-        env["XDG_CACHE_HOME"] = str(cache_dir)
-        return env
+        # Reuse the operator's normal HOME/cache so BabelDOC can keep global model/font caches
+        # instead of redownloading heavy assets for every task workspace.
+        return os.environ.copy()
 
     def build_command(
         self,

@@ -12,6 +12,7 @@ engine = create_engine(
     settings.database_url,
     echo=settings.sql_echo,
     pool_pre_ping=True,
+    pool_recycle=settings.mysql_pool_recycle,
 )
 
 SessionLocal = sessionmaker(
