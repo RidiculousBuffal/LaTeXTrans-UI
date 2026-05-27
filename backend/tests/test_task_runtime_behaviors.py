@@ -13,6 +13,7 @@ from backend.app.services.archive_service import ArchiveService
 from backend.app.services.task_service import TaskService
 from backend.app.services.translation_service import TranslationService
 from backend.app.schemas.task import TaskCreateRequest
+from backend.app.workers import translation_runner
 from backend.app.workers.translation_runner import _ensure_not_canceled, _finalize_runtime_artifacts, _handle_translation_subprogress, _mark_canceled
 
 
@@ -287,3 +288,79 @@ def test_config_snapshot_normalizes_string_mode_to_int() -> None:
     assert snapshot["mode"] == 0
     assert isinstance(snapshot["mode"], int)
     assert snapshot["target_language"] == "ch"
+
+
+def test_run_task_marks_failed_when_pdf_missing(monkeypatch, tmp_path: Path) -> None:
+    session = make_session()
+    task = seed_task(session, task_id="missing-pdf", status=TaskStatus.PENDING, arxiv_id="2605.22781")
+    workspace_dir = tmp_path / "workspace"
+    runtime_dir = workspace_dir / "runtime"
+    sources_dir = workspace_dir / "sources"
+    output_dir = workspace_dir / "output"
+    project_dir = sources_dir / "2605.22781"
+    translated_project_dir = output_dir / f"{task.target_language}_{project_dir.name}"
+
+    runtime_dir.mkdir(parents=True, exist_ok=True)
+    project_dir.mkdir(parents=True, exist_ok=True)
+    translated_project_dir.mkdir(parents=True, exist_ok=True)
+
+    runtime_dirs = {
+        "workspace_dir": str(workspace_dir),
+        "runtime_dir": str(runtime_dir),
+        "sources_dir": str(sources_dir),
+        "output_dir": str(output_dir),
+    }
+
+    class FakeTranslationService:
+        def ensure_runtime_dirs(self, *, task: TranslationTask):
+            return runtime_dirs
+
+        def normalize_mode(self, value):
+            return 0
+
+    class FakePipelineService:
+        def prepare_sources(self, *, config, workspace_dir):
+            archive = sources_dir / "2605.22781.tar.gz"
+            archive.write_text("dummy", encoding="utf-8")
+            return [str(project_dir)], [archive]
+
+        def run_translation_pipeline(self, *, config, project_dir, output_dir, progress_callback=None):
+            return None
+
+        def find_generated_pdf(self, *, translated_project_dir, target_language):
+            return None
+
+    class FakeStorageService:
+        def upload_path(self, *, task: TranslationTask, artifact_type: TaskArtifactType, file_path, metadata=None):
+            path = Path(file_path)
+            if path.is_dir():
+                file_name = path.name
+                file_size = 0
+            else:
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.touch(exist_ok=True)
+                file_name = path.name
+                file_size = path.stat().st_size
+            return TaskArtifact(
+                task=task,
+                artifact_type=artifact_type,
+                object_key=f"{task.id}/{artifact_type.value.lower()}/{file_name}",
+                file_name=file_name,
+                content_type="application/octet-stream",
+                file_size=file_size,
+                version=1,
+                metadata_json=metadata or {},
+            )
+
+    monkeypatch.setattr(translation_runner, "TranslationService", lambda: FakeTranslationService())
+    monkeypatch.setattr(translation_runner, "PipelineService", lambda: FakePipelineService())
+    monkeypatch.setattr(translation_runner, "StorageService", lambda: FakeStorageService())
+
+    translation_runner._run_task(task_id=task.id, db=session)
+
+    refreshed = TaskRepository(session).get_task_by_id(task.id)
+    assert refreshed is not None
+    assert refreshed.status == TaskStatus.FAILED
+    assert refreshed.current_stage == TaskStatus.FAILED.value
+    assert refreshed.error_message is not None
+    assert "missing PDF output" in refreshed.error_message

@@ -160,6 +160,11 @@ def _run_task(*, task_id: str, db: Session) -> None:
                     translated_project_dir=translated_project_dir,
                     target_language=task.target_language,
                 )
+                if not pdf_path:
+                    raise RuntimeError(
+                        "LaTeX compile failed: missing PDF output. "
+                        f"Please check logs under {translated_project_dir}/build_* and {log_path}."
+                    )
                 _ensure_not_canceled(repository=repository, task_id=task_id)
                 _set_status(
                     repository=repository,

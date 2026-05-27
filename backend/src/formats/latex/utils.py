@@ -519,6 +519,10 @@ def get_captionof_pattern():
     return pattern
 
 def add_ctex_package(latex_code):
+    # `ctex` adjusts document-level typesetting settings and can conflict with
+    # some classes (e.g. acmart) which strictly validate layout parameters.
+    if re.search(r"\\documentclass(?:\[[^\]]*\])?\{acmart\}", latex_code, re.IGNORECASE):
+        return latex_code
 
     if "\\usepackage[UTF8]{ctex}" not in latex_code:
         ctex_package = "\\usepackage[UTF8]{ctex}"

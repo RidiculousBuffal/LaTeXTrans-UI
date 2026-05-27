@@ -125,8 +125,11 @@ class LaTexCompiler:
                               tex_file: str, 
                               out_dir: str, 
                               engine: str = "pdflatex"):
-        
+        out_dir = os.path.abspath(out_dir)
         os.makedirs(out_dir, exist_ok=True)
+        tex_file = os.path.abspath(tex_file)
+        tex_file_name = os.path.basename(tex_file)
+        cwd = os.path.dirname(tex_file)
         
         cmd = [
             "latexmk",
@@ -136,9 +139,8 @@ class LaTexCompiler:
             f"-file-line-error",       
             f"-synctex=1",
             f"-f",                        # force mode
-            tex_file
+            tex_file_name
         ]
-        cwd = os.path.dirname(tex_file)
         try:
             subprocess.run(cmd, check=True, capture_output=True, cwd=cwd)
             print("✅  Compilation successful!") #compile success!
@@ -154,8 +156,11 @@ class LaTexCompiler:
                               tex_file: str, 
                               out_dir: str, 
                               engine: str = "xelatex"):
-        
+        out_dir = os.path.abspath(out_dir)
         os.makedirs(out_dir, exist_ok=True)
+        tex_file = os.path.abspath(tex_file)
+        tex_file_name = os.path.basename(tex_file)
+        cwd = os.path.dirname(tex_file)
         
         cmd = [
             "latexmk",
@@ -165,9 +170,8 @@ class LaTexCompiler:
             f"-file-line-error",       
             f"-synctex=1",
             f"-f",                        # force mode
-            tex_file
+            tex_file_name
         ]
-        cwd = os.path.dirname(tex_file)
         try:
             subprocess.run(cmd, check=True, capture_output=True, cwd=cwd)
             print("✅  Compilation successful!") #compile success!
@@ -179,8 +183,11 @@ class LaTexCompiler:
                               tex_file: str, 
                               out_dir: str, 
                               engine: str = "lualatex"):
-        
+        out_dir = os.path.abspath(out_dir)
         os.makedirs(out_dir, exist_ok=True)
+        tex_file = os.path.abspath(tex_file)
+        tex_file_name = os.path.basename(tex_file)
+        cwd = os.path.dirname(tex_file)
         
         cmd = [
             "latexmk",
@@ -190,9 +197,8 @@ class LaTexCompiler:
             f"-file-line-error",       
             f"-synctex=1",
             f"-f",                        # force mode
-            tex_file
+            tex_file_name
         ]
-        cwd = os.path.dirname(tex_file)
         try:
             subprocess.run(cmd, check=True, capture_output=True, cwd=cwd)
             print("✅  Compilation successful!") #compile success!
