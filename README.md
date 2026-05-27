@@ -12,6 +12,26 @@
 
  `.env` config example reference [.env.example](.env.example)
 
+## Unified Docker Deployment
+
+Build the image from the repository root:
+
+```bash
+docker build -t latex-trans-prod .
+```
+
+Run the backend API and bundled frontend together on port `8000`:
+
+```bash
+docker run --rm -p 8000:8000 --env-file .env latex-trans-prod
+```
+
+After the container starts:
+
+- Frontend UI: `http://127.0.0.1:8000/`
+- Backend API: `http://127.0.0.1:8000/api`
+- OpenAPI docs: `http://127.0.0.1:8000/api/docs`
+
 
 ## UI Example
 ![img.png](imgs/img.png)
