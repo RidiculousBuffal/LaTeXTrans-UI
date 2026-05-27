@@ -1,3 +1,42 @@
+>本仓库基于 Fork 改造，下面完整保留了原仓库 README 内容。
+
+原始仓库链接：[NiuTrans/LaTeXTrans](https://github.com/NiuTrans/LaTeXTrans)
+
+ 本 Fork 的主要改动：
+ 1. 请求方式改为 LangChain + OpenAI Responses API。
+ 2. 配置方式由 TOML 改为 `.env` 环境变量。
+ 3. 改为前后端分离架构，并引入数据库管理任务状态与历史。
+ 4. 增加任务运行态持久化、产物管理，以及 MinIO 上传下载链路。
+
+ `.env` 配置示例（当前后端）：
+ ```env
+ OPENAI_MODEL=
+ OPENAI_BASE_URL=
+ OPENAI_API_KEY=
+
+ BACKEND_DATABASE_URL=
+ MYSQL_USERNAME=
+ MYSQL_PASSWORD=
+ MYSQL_HOST=
+ MYSQL_PORT=
+ MYSQL_DATABASE=
+
+ MINIO_URL=
+ MINIO_ACCESS_KEY=
+ MINIO_SECRET_KEY=
+ ```
+
+## UI 示例
+![img.png](imgs/img.png)
+![img_1.png](imgs/img_1.png)
+![img_2.png](imgs/img_2.png)
+![img_3.png](imgs/img_3.png)
+
+
+
+
+
+
 <div align="center">
 
 [English](README.md) | 中文
