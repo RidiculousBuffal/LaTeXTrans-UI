@@ -12,14 +12,20 @@ export const taskStatuses = [
 
 export type TaskStatus = (typeof taskStatuses)[number]
 
-export const sourceTypes = ["arxiv", "upload"] as const
+export const taskEngines = ["latex", "babeldoc"] as const
+export type TaskEngine = (typeof taskEngines)[number]
+
+export const sourceTypes = ["arxiv", "upload", "pdf_upload"] as const
 export type SourceType = (typeof sourceTypes)[number]
 
 export const artifactTypes = [
   "SOURCE_ARCHIVE",
+  "SOURCE_PDF",
   "EXTRACTED_SOURCE",
   "TRANSLATED_PROJECT",
   "FINAL_PDF",
+  "TRANSLATED_PDF",
+  "BABELDOC_OUTPUT",
   "LOG",
   "METADATA",
   "INTERMEDIATE_JSON",
@@ -30,6 +36,7 @@ export type ArtifactType = (typeof artifactTypes)[number]
 export type TaskSummary = {
   id: string
   task_name: string
+  engine: TaskEngine
   source_type: SourceType
   arxiv_id: string | null
   source_archive_name: string | null
@@ -141,6 +148,7 @@ export type TaskListFilters = {
 }
 
 export type CreateArxivTaskPayload = {
+  engine?: "latex"
   source_type: "arxiv"
   arxiv_id: string
   task_name?: string
@@ -170,6 +178,19 @@ export type CreateUploadTaskPayload = {
     mode: string
     update_term: string
     user_term: string
+  }
+}
+
+export type CreatePdfTaskPayload = {
+  file: File
+  task_name?: string
+  target_language?: string
+  model_name?: string
+  created_by?: string
+  env_profile?: string
+  options?: {
+    qps?: string
+    pool_max_workers?: string
   }
 }
 

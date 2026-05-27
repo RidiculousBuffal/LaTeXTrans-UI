@@ -3,6 +3,7 @@ import axios from "axios"
 import type {
   ArtifactListResponse,
   CreateArxivTaskPayload,
+  CreatePdfTaskPayload,
   CreateUploadTaskPayload,
   FailureSummary,
   PaginatedArchives,
@@ -128,6 +129,43 @@ export function createUploadTask(payload: CreateUploadTaskPayload) {
 
   return withApiError(
     api.post<TaskDetail>("/tasks/upload", formData, {
+      headers: {
+        "Content-Type": "multipart/form-data",
+      },
+    })
+  )
+}
+
+export function createPdfTask(payload: CreatePdfTaskPayload) {
+  const formData = new FormData()
+  formData.append("file", payload.file)
+
+  if (payload.task_name) {
+    formData.append("task_name", payload.task_name)
+  }
+
+  if (payload.target_language) {
+    formData.append("target_language", payload.target_language)
+  }
+
+  if (payload.model_name) {
+    formData.append("model_name", payload.model_name)
+  }
+
+  if (payload.created_by) {
+    formData.append("created_by", payload.created_by)
+  }
+
+  if (payload.env_profile) {
+    formData.append("env_profile", payload.env_profile)
+  }
+
+  if (payload.options) {
+    formData.append("options", JSON.stringify(payload.options))
+  }
+
+  return withApiError(
+    api.post<TaskDetail>("/tasks/pdf", formData, {
       headers: {
         "Content-Type": "multipart/form-data",
       },

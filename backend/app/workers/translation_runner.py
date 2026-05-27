@@ -12,8 +12,9 @@ from sqlalchemy.orm import Session
 
 from backend.app.core.logging import configure_logging
 from backend.app.db.session import SessionLocal
-from backend.app.models.task import TaskArtifactType, TaskEvent, TaskStatus, TranslationTask
+from backend.app.models.task import TaskArtifactType, TaskEngine, TaskEvent, TaskStatus, TranslationTask
 from backend.app.repositories.task_repository import TaskRepository
+from backend.app.services.babeldoc_service import BabelDocService
 from backend.app.services.pipeline_service import PipelineService
 from backend.app.services.storage_service import StorageService
 from backend.app.services.translation_service import TranslationService
@@ -57,6 +58,7 @@ def _run_task(*, task_id: str, db: Session) -> None:
     repository = TaskRepository(db)
     translation_service = TranslationService()
     pipeline_service = PipelineService()
+    babeldoc_service = BabelDocService()
     storage_service = StorageService()
 
     task = repository.get_task_by_id(task_id)
@@ -65,9 +67,10 @@ def _run_task(*, task_id: str, db: Session) -> None:
 
     runtime_dirs = translation_service.ensure_runtime_dirs(task=task)
     config = dict(task.configs[-1].config_snapshot_json)
-    config["mode"] = translation_service.normalize_mode(config.get("mode", 0))
     config["tex_sources_dir"] = runtime_dirs["sources_dir"]
     config["output_dir"] = runtime_dirs["output_dir"]
+    if task.engine == TaskEngine.LATEX:
+        config["mode"] = translation_service.normalize_mode(config.get("mode", 0))
     log_path = Path(runtime_dirs["runtime_dir"]) / "task.log"
     metadata_path = Path(runtime_dirs["runtime_dir"]) / "task-config.json"
     event_log_path = Path(runtime_dirs["runtime_dir"]) / "task-events.jsonl"
@@ -84,111 +87,29 @@ def _run_task(*, task_id: str, db: Session) -> None:
     )
 
     try:
-        _ensure_not_canceled(repository=repository, task_id=task_id)
-        _set_status(
-            repository=repository,
-            task_id=task_id,
-            status=TaskStatus.DOWNLOADING,
-            message="Preparing and downloading translation sources.",
-            details={"workspace_dir": runtime_dirs["workspace_dir"]},
-            event_log_path=event_log_path,
-            set_started=True,
-        )
-
-        with log_path.open("a", encoding="utf-8") as log_file, contextlib.redirect_stdout(log_file), contextlib.redirect_stderr(log_file):
-            projects, _source_archives = pipeline_service.prepare_sources(
+        if task.engine == TaskEngine.BABELDOC:
+            _run_babeldoc_task(
+                repository=repository,
+                task=task,
+                runtime_dirs=runtime_dirs,
                 config=config,
-                workspace_dir=runtime_dirs["workspace_dir"],
+                log_path=log_path,
+                event_log_path=event_log_path,
+                babeldoc_service=babeldoc_service,
+                storage_service=storage_service,
             )
-            _ensure_not_canceled(repository=repository, task_id=task_id)
-
-            for project_dir in projects:
-                _ensure_not_canceled(repository=repository, task_id=task_id)
-                _set_status(
-                    repository=repository,
-                    task_id=task_id,
-                    status=TaskStatus.PARSING,
-                    message="Source project prepared and ready for parsing.",
-                    details={"project_dir": project_dir},
-                    event_log_path=event_log_path,
-                )
-                _ensure_not_canceled(repository=repository, task_id=task_id)
-                _set_status(
-                    repository=repository,
-                    task_id=task_id,
-                    status=TaskStatus.TRANSLATING,
-                    message="Translation pipeline started.",
-                    details={"project_dir": project_dir},
-                    event_log_path=event_log_path,
-                )
-                pipeline_service.run_translation_pipeline(
-                    config=config,
-                    project_dir=project_dir,
-                    output_dir=runtime_dirs["output_dir"],
-                    progress_callback=lambda payload: _handle_translation_subprogress(
-                        repository=repository,
-                        task_id=task_id,
-                        event_log_path=event_log_path,
-                        payload=payload,
-                        progress_state=progress_state,
-                    ),
-                )
-                _ensure_not_canceled(repository=repository, task_id=task_id)
-                _set_status(
-                    repository=repository,
-                    task_id=task_id,
-                    status=TaskStatus.VALIDATING,
-                    message="Translation finished, validating generated files.",
-                    details={"project_dir": project_dir},
-                    event_log_path=event_log_path,
-                )
-
-                translated_project_dir = str(
-                    Path(runtime_dirs["output_dir"]) / f"{task.target_language}_{Path(project_dir).name}"
-                )
-                pdf_path = pipeline_service.find_generated_pdf(
-                    translated_project_dir=translated_project_dir,
-                    target_language=task.target_language,
-                )
-                if not pdf_path:
-                    raise RuntimeError(
-                        "LaTeX compile failed: missing PDF output. "
-                        f"Please check logs under {translated_project_dir}/build_* and {log_path}."
-                    )
-                _ensure_not_canceled(repository=repository, task_id=task_id)
-                _set_status(
-                    repository=repository,
-                    task_id=task_id,
-                    status=TaskStatus.GENERATING,
-                    message="Registering generated artifacts.",
-                    details={"translated_project_dir": translated_project_dir},
-                    event_log_path=event_log_path,
-                )
-
-                task = _require_task(repository, task_id)
-                repository.add_artifact(
-                    storage_service.upload_path(
-                        task=task,
-                        artifact_type=TaskArtifactType.EXTRACTED_SOURCE,
-                        file_path=project_dir,
-                    )
-                )
-                repository.add_artifact(
-                    storage_service.upload_path(
-                        task=task,
-                        artifact_type=TaskArtifactType.TRANSLATED_PROJECT,
-                        file_path=translated_project_dir,
-                    )
-                )
-
-                if pdf_path:
-                    repository.add_artifact(
-                        storage_service.upload_path(
-                            task=task,
-                            artifact_type=TaskArtifactType.FINAL_PDF,
-                            file_path=pdf_path,
-                        )
-                    )
+        else:
+            projects = _run_latex_task(
+                repository=repository,
+                task=task,
+                runtime_dirs=runtime_dirs,
+                config=config,
+                log_path=log_path,
+                event_log_path=event_log_path,
+                pipeline_service=pipeline_service,
+                storage_service=storage_service,
+                progress_state=progress_state,
+            )
 
         repository.commit()
         _ensure_not_canceled(repository=repository, task_id=task_id)
@@ -227,6 +148,221 @@ def _require_task(repository: TaskRepository, task_id: str) -> TranslationTask:
     if not task:
         raise RuntimeError(f"Task {task_id} no longer exists.")
     return task
+
+
+def _run_latex_task(
+    *,
+    repository: TaskRepository,
+    task: TranslationTask,
+    runtime_dirs: dict[str, str],
+    config: dict[str, Any],
+    log_path: Path,
+    event_log_path: Path,
+    pipeline_service: PipelineService,
+    storage_service: StorageService,
+    progress_state: dict[str, tuple[int, int]],
+) -> list[str]:
+    projects: list[str] = []
+    _ensure_not_canceled(repository=repository, task_id=task.id)
+    _set_status(
+        repository=repository,
+        task_id=task.id,
+        status=TaskStatus.DOWNLOADING,
+        message="Preparing and downloading translation sources.",
+        details={"workspace_dir": runtime_dirs["workspace_dir"]},
+        event_log_path=event_log_path,
+        set_started=True,
+    )
+
+    with log_path.open("a", encoding="utf-8") as log_file, contextlib.redirect_stdout(log_file), contextlib.redirect_stderr(log_file):
+        projects, _source_archives = pipeline_service.prepare_sources(
+            config=config,
+            workspace_dir=runtime_dirs["workspace_dir"],
+        )
+        _ensure_not_canceled(repository=repository, task_id=task.id)
+
+        for project_dir in projects:
+            _ensure_not_canceled(repository=repository, task_id=task.id)
+            _set_status(
+                repository=repository,
+                task_id=task.id,
+                status=TaskStatus.PARSING,
+                message="Source project prepared and ready for parsing.",
+                details={"project_dir": project_dir},
+                event_log_path=event_log_path,
+            )
+            _ensure_not_canceled(repository=repository, task_id=task.id)
+            _set_status(
+                repository=repository,
+                task_id=task.id,
+                status=TaskStatus.TRANSLATING,
+                message="Translation pipeline started.",
+                details={"project_dir": project_dir},
+                event_log_path=event_log_path,
+            )
+            pipeline_service.run_translation_pipeline(
+                config=config,
+                project_dir=project_dir,
+                output_dir=runtime_dirs["output_dir"],
+                progress_callback=lambda payload: _handle_translation_subprogress(
+                    repository=repository,
+                    task_id=task.id,
+                    event_log_path=event_log_path,
+                    payload=payload,
+                    progress_state=progress_state,
+                ),
+            )
+            _ensure_not_canceled(repository=repository, task_id=task.id)
+            _set_status(
+                repository=repository,
+                task_id=task.id,
+                status=TaskStatus.VALIDATING,
+                message="Translation finished, validating generated files.",
+                details={"project_dir": project_dir},
+                event_log_path=event_log_path,
+            )
+
+            translated_project_dir = str(Path(runtime_dirs["output_dir"]) / f"{task.target_language}_{Path(project_dir).name}")
+            pdf_path = pipeline_service.find_generated_pdf(
+                translated_project_dir=translated_project_dir,
+                target_language=task.target_language,
+            )
+            if not pdf_path:
+                raise RuntimeError(
+                    "LaTeX compile failed: missing PDF output. "
+                    f"Please check logs under {translated_project_dir}/build_* and {log_path}."
+                )
+            _ensure_not_canceled(repository=repository, task_id=task.id)
+            _set_status(
+                repository=repository,
+                task_id=task.id,
+                status=TaskStatus.GENERATING,
+                message="Registering generated artifacts.",
+                details={"translated_project_dir": translated_project_dir},
+                event_log_path=event_log_path,
+            )
+
+            current_task = _require_task(repository, task.id)
+            repository.add_artifact(
+                storage_service.upload_path(
+                    task=current_task,
+                    artifact_type=TaskArtifactType.EXTRACTED_SOURCE,
+                    file_path=project_dir,
+                )
+            )
+            repository.add_artifact(
+                storage_service.upload_path(
+                    task=current_task,
+                    artifact_type=TaskArtifactType.TRANSLATED_PROJECT,
+                    file_path=translated_project_dir,
+                )
+            )
+            repository.add_artifact(
+                storage_service.upload_path(
+                    task=current_task,
+                    artifact_type=TaskArtifactType.FINAL_PDF,
+                    file_path=pdf_path,
+                )
+            )
+
+    return projects
+
+
+def _run_babeldoc_task(
+    *,
+    repository: TaskRepository,
+    task: TranslationTask,
+    runtime_dirs: dict[str, str],
+    config: dict[str, Any],
+    log_path: Path,
+    event_log_path: Path,
+    babeldoc_service: BabelDocService,
+    storage_service: StorageService,
+) -> None:
+    _ensure_not_canceled(repository=repository, task_id=task.id)
+    _set_status(
+        repository=repository,
+        task_id=task.id,
+        status=TaskStatus.PARSING,
+        message="PDF uploaded and BabelDOC runtime prepared.",
+        details={"workspace_dir": runtime_dirs["workspace_dir"]},
+        event_log_path=event_log_path,
+        set_started=True,
+    )
+
+    source_pdf = Path(runtime_dirs["sources_dir"]) / Path(task.source_archive_name or "document.pdf").name
+    env = babeldoc_service.build_runtime_env(workspace_dir=runtime_dirs["workspace_dir"])
+    command = babeldoc_service.build_command(
+        input_pdf=source_pdf,
+        output_dir=runtime_dirs["babeldoc_output_dir"],
+        working_dir=runtime_dirs["runtime_dir"],
+        target_language=task.target_language,
+        model_name=task.model_name,
+        options=config.get("runtime", {}).get("options"),
+    )
+    _ensure_not_canceled(repository=repository, task_id=task.id)
+    _set_status(
+        repository=repository,
+        task_id=task.id,
+        status=TaskStatus.TRANSLATING,
+        message="BabelDOC CLI process started.",
+        details={"command_path": command[0], "output_dir": runtime_dirs["babeldoc_output_dir"]},
+        event_log_path=event_log_path,
+    )
+
+    result = babeldoc_service.run_command(command=command, env=env, log_path=log_path)
+    if result.returncode != 0:
+        raise RuntimeError(f"BabelDOC process failed with exit code {result.returncode}.")
+
+    _ensure_not_canceled(repository=repository, task_id=task.id)
+    _set_status(
+        repository=repository,
+        task_id=task.id,
+        status=TaskStatus.VALIDATING,
+        message="BabelDOC translation finished, validating generated files.",
+        details={"output_dir": runtime_dirs["babeldoc_output_dir"]},
+        event_log_path=event_log_path,
+    )
+
+    translated_pdf = babeldoc_service.find_translated_pdf(
+        output_dir=runtime_dirs["babeldoc_output_dir"],
+        original_name=task.source_archive_name,
+    )
+    if not translated_pdf:
+        raise RuntimeError("BabelDOC output validation failed: translated PDF not found.")
+
+    _ensure_not_canceled(repository=repository, task_id=task.id)
+    _set_status(
+        repository=repository,
+        task_id=task.id,
+        status=TaskStatus.GENERATING,
+        message="Registering BabelDOC artifacts.",
+        details={"translated_pdf": translated_pdf},
+        event_log_path=event_log_path,
+    )
+
+    current_task = _require_task(repository, task.id)
+    repository.add_artifact(
+        storage_service.upload_path(
+            task=current_task,
+            artifact_type=TaskArtifactType.SOURCE_PDF,
+            file_path=source_pdf,
+        )
+    )
+    repository.add_artifact(
+        storage_service.upload_path(
+            task=current_task,
+            artifact_type=TaskArtifactType.TRANSLATED_PDF,
+            file_path=translated_pdf,
+        )
+    )
+    repository.add_artifact(
+        storage_service.upload_path(
+            task=current_task,
+            artifact_type=TaskArtifactType.BABELDOC_OUTPUT,
+            file_path=runtime_dirs["babeldoc_output_dir"],
+        )
+    )
 
 
 def _ensure_not_canceled(*, repository: TaskRepository, task_id: str) -> TranslationTask:

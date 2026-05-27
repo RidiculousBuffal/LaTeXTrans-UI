@@ -6,4 +6,5 @@ def test_routes_are_registered() -> None:
     assert "/healthz" in paths
     assert "/api/tasks" in paths
     assert "/api/tasks/upload" in paths
+    assert "/api/tasks/pdf" in paths
     assert "/api/tasks/failures/summary" in paths

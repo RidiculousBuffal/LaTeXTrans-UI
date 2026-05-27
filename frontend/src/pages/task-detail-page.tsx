@@ -152,6 +152,7 @@ export function TaskDetailPage() {
                 <CardContent className="grid gap-4 md:grid-cols-2">
                   <MetadataItem label="Task ID" value={task.id} />
                   <MetadataItem label="Created by" value={task.created_by} />
+                  <MetadataItem label="Engine" value={task.engine} />
                   <MetadataItem label="Source type" value={task.source_type} />
                   <MetadataItem label="arXiv ID" value={task.arxiv_id ?? "—"} />
                   <MetadataItem label="Model" value={task.model_name} />

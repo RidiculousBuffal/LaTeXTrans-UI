@@ -22,8 +22,14 @@
 
 - `arxiv`
 - `upload`
+- `pdf_upload`
 
-### 2.2 Task Status
+### 2.2 Task Engine
+
+- `latex`
+- `babeldoc`
+
+### 2.3 Task Status
 
 - `PENDING`
 - `DOWNLOADING`
@@ -35,15 +41,21 @@
 - `FAILED`
 - `CANCELED`
 
-### 2.3 Artifact Type
+### 2.4 Artifact Type
 
 - `SOURCE_ARCHIVE`
+- `SOURCE_PDF`
 - `EXTRACTED_SOURCE`
 - `TRANSLATED_PROJECT`
 - `FINAL_PDF`
-- `LOG`
-- `METADATA`
+- `TRANSLATED_PDF`
+- `BABELDOC_OUTPUT`
 - `INTERMEDIATE_JSON`
+
+说明：
+
+- 当前对前端暴露的 artifact 以可交付产物为主。
+- `task.log`、`task-config.json`、`task-events.jsonl` 这类 runtime 文件默认不上传到对象存储，因此不会出现在 artifact 列表中。
 
 ## 3. Shared Response Models
 
@@ -53,6 +65,7 @@
 {
   "id": "string",
   "task_name": "string",
+  "engine": "latex",
   "source_type": "arxiv",
   "arxiv_id": "string|null",
   "source_archive_name": "string|null",
@@ -227,7 +240,45 @@ curl -X POST "http://127.0.0.1:8000/api/tasks/upload" \
 - `201 Created`
 - Body 为 `TaskDetailResponse`
 
-### 4.4 List Tasks
+### 4.4 Create PDF Task
+
+`POST /api/tasks/pdf`
+
+请求头：
+
+- `Content-Type: multipart/form-data`
+
+表单字段：
+
+- `file`: 必填，只支持 `.pdf`
+- `task_name`: 可选
+- `target_language`: 可选，默认 `zh`
+- `model_name`: 可选
+- `created_by`: 可选
+- `env_profile`: 可选，默认 `default`
+- `options`: 可选，字符串形式 JSON，当前主要用于 `qps`、`pool_max_workers`
+
+示例：
+
+```bash
+curl -X POST "http://127.0.0.1:8000/api/tasks/pdf" \
+  -F 'file=@/path/to/paper.pdf' \
+  -F 'task_name=my-babeldoc-paper' \
+  -F 'target_language=zh' \
+  -F 'options={"qps":"20","pool_max_workers":"20"}'
+```
+
+响应：
+
+- `201 Created`
+- Body 为 `TaskDetailResponse`
+
+说明：
+
+- 创建成功后，任务会以 `engine=babeldoc`、`source_type=pdf_upload` 入队
+- runtime 日志仍只保留在后端本地工作目录，不进入 artifact 列表
+
+### 4.5 List Tasks
 
 `GET /api/tasks`
 
@@ -259,7 +310,7 @@ curl "http://127.0.0.1:8000/api/tasks?page=1&page_size=20&status=FAILED&task_nam
 }
 ```
 
-### 4.5 Get Task Detail
+### 4.6 Get Task Detail
 
 `GET /api/tasks/{task_id}`
 
@@ -277,7 +328,7 @@ curl "http://127.0.0.1:8000/api/tasks?page=1&page_size=20&status=FAILED&task_nam
 - 任务详情页优先使用这个接口
 - 它返回任务基础信息、事件时间线、配置快照和 artifact 列表
 
-### 4.6 Retry Task
+### 4.7 Retry Task
 
 `POST /api/tasks/{task_id}/retry`
 
@@ -295,7 +346,7 @@ curl "http://127.0.0.1:8000/api/tasks?page=1&page_size=20&status=FAILED&task_nam
 }
 ```
 
-### 4.7 Cancel Task
+### 4.8 Cancel Task
 
 `POST /api/tasks/{task_id}/cancel`
 
@@ -314,7 +365,7 @@ curl "http://127.0.0.1:8000/api/tasks?page=1&page_size=20&status=FAILED&task_nam
 }
 ```
 
-### 4.8 List Task Artifacts
+### 4.9 List Task Artifacts
 
 `GET /api/tasks/{task_id}/artifacts`
 
@@ -346,11 +397,11 @@ curl "http://127.0.0.1:8000/api/tasks?page=1&page_size=20&status=FAILED&task_nam
 - 下载按钮直接使用 `download_url`
 - 可按 `artifact_type` 分组展示
 
-### 4.9 List Task Logs
+### 4.10 List Task Logs
 
 `GET /api/tasks/{task_id}/logs`
 
-响应结构与 artifact 列表一致，但仅返回 `artifact_type=LOG` 的项：
+当前接口为保留位。基于现行约束，runtime 日志不对前端开放下载，因此默认返回空列表：
 
 ```json
 {
@@ -359,7 +410,12 @@ curl "http://127.0.0.1:8000/api/tasks?page=1&page_size=20&status=FAILED&task_nam
 }
 ```
 
-### 4.10 Failure Summary
+说明：
+
+- 前端排障展示应优先使用 `error_message`、`events`、`configs`
+- 若未来引入脱敏后的运维日志导出，应单独定义可公开的日志产物类型，而不是直接暴露原始 `task.log`
+
+### 4.11 Failure Summary
 
 `GET /api/tasks/failures/summary`
 
@@ -384,7 +440,7 @@ curl "http://127.0.0.1:8000/api/tasks?page=1&page_size=20&status=FAILED&task_nam
 
 - 可用于管理员面板或失败任务概览卡片
 
-### 4.11 List Archives
+### 4.12 List Archives
 
 `GET /api/archives`
 
@@ -426,6 +482,7 @@ curl "http://127.0.0.1:8000/api/tasks?page=1&page_size=20&status=FAILED&task_nam
 建议展示字段：
 
 - `task_name`
+- `engine`
 - `source_type`
 - `arxiv_id`
 - `status`
@@ -449,7 +506,7 @@ curl "http://127.0.0.1:8000/api/tasks?page=1&page_size=20&status=FAILED&task_nam
 - 状态与进度
 - 事件时间线
 - 归档产物
-- 日志下载
+- 配置快照
 
 ### 5.3 New Task Page
 
@@ -460,6 +517,10 @@ curl "http://127.0.0.1:8000/api/tasks?page=1&page_size=20&status=FAILED&task_nam
 创建上传任务：
 
 - `POST /api/tasks/upload`
+
+创建 PDF 任务：
+
+- `POST /api/tasks/pdf`
 
 ### 5.4 Archives Page
 

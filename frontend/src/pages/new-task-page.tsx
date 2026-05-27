@@ -5,9 +5,9 @@ import { zodResolver } from "@hookform/resolvers/zod"
 import { useNavigate } from "react-router-dom"
 import { toast } from "sonner"
 import { z } from "zod"
-import { FileArchiveIcon, GlobeIcon, Loader2Icon, UploadIcon } from "lucide-react"
+import { FileArchiveIcon, FileTextIcon, GlobeIcon, Loader2Icon, UploadIcon } from "lucide-react"
 
-import { createArxivTask, createUploadTask } from "@/lib/api"
+import { createArxivTask, createPdfTask, createUploadTask } from "@/lib/api"
 import { queryClient } from "@/lib/query-client"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -30,8 +30,13 @@ const uploadSchema = z.object({
   file: z.instanceof(File, { message: "Archive file is required." }),
 })
 
+const pdfSchema = z.object({
+  file: z.instanceof(File, { message: "PDF file is required." }),
+})
+
 type ArxivFormValues = z.infer<typeof arxivSchema>
 type UploadFormValues = z.infer<typeof uploadSchema>
+type PdfFormValues = z.infer<typeof pdfSchema>
 
 export function NewTaskPage() {
   const [tab, setTab] = useState("arxiv")
@@ -46,6 +51,13 @@ export function NewTaskPage() {
 
   const uploadForm = useForm<UploadFormValues>({
     resolver: zodResolver(uploadSchema),
+    defaultValues: {
+      file: undefined as unknown as File,
+    },
+  })
+
+  const pdfForm = useForm<PdfFormValues>({
+    resolver: zodResolver(pdfSchema),
     defaultValues: {
       file: undefined as unknown as File,
     },
@@ -83,7 +95,23 @@ export function NewTaskPage() {
     },
   })
 
-  const isSubmitting = arxivMutation.isPending || uploadMutation.isPending
+  const pdfMutation = useMutation({
+    mutationFn: createPdfTask,
+    onSuccess: (task) => {
+      toast.success("PDF task created", {
+        description: `Task ${task.task_name} is now queued.`,
+      })
+      void queryClient.invalidateQueries({ queryKey: ["tasks"] })
+      navigate(`/tasks/${task.id}`)
+    },
+    onError: (error) => {
+      toast.error("PDF task failed", {
+        description: getErrorMessage(error),
+      })
+    },
+  })
+
+  const isSubmitting = arxivMutation.isPending || uploadMutation.isPending || pdfMutation.isPending
 
   return (
     <div className="mx-auto grid w-full max-w-3xl gap-6">
@@ -104,6 +132,10 @@ export function NewTaskPage() {
               <TabsTrigger value="upload">
                 <UploadIcon data-icon="inline-start" />
                 Upload
+              </TabsTrigger>
+              <TabsTrigger value="pdf">
+                <FileTextIcon data-icon="inline-start" />
+                PDF
               </TabsTrigger>
             </TabsList>
 
@@ -180,6 +212,47 @@ export function NewTaskPage() {
                       <Loader2Icon className="animate-spin" data-icon="inline-start" />
                     )}
                     Upload and create task
+                  </Button>
+                </div>
+              </form>
+            </TabsContent>
+
+            <TabsContent value="pdf" className="pt-5">
+              <form
+                className="flex flex-col gap-5"
+                onSubmit={pdfForm.handleSubmit((values) => {
+                  pdfMutation.mutate({
+                    file: values.file,
+                  })
+                })}
+              >
+                <Field>
+                  <FieldLabel htmlFor="pdf-file">PDF file</FieldLabel>
+                  <FieldContent>
+                    <Input
+                      id="pdf-file"
+                      type="file"
+                      accept=".pdf,application/pdf"
+                      onChange={(event) => {
+                        const file = event.target.files?.[0]
+                        if (file) {
+                          pdfForm.setValue("file", file, { shouldValidate: true })
+                        }
+                      }}
+                    />
+                    <FieldDescription>
+                      Upload a PDF and run it through BabelDOC with backend defaults.
+                    </FieldDescription>
+                    <FieldError errors={[pdfForm.formState.errors.file]} />
+                  </FieldContent>
+                </Field>
+
+                <div className="flex justify-end">
+                  <Button type="submit" disabled={isSubmitting}>
+                    {pdfMutation.isPending && (
+                      <Loader2Icon className="animate-spin" data-icon="inline-start" />
+                    )}
+                    Upload PDF and create task
                   </Button>
                 </div>
               </form>

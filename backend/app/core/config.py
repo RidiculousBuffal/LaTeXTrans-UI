@@ -28,6 +28,11 @@ class Settings(BaseSettings):
     openai_base_url: str = Field(default="", alias="OPENAI_BASE_URL")
     openai_api_key: str = Field(default="", alias="OPENAI_API_KEY")
 
+    babeldoc_bin: str = Field(default="babeldoc", alias="BABELDOC_BIN")
+    babeldoc_qps: int = Field(default=20, alias="BABELDOC_QPS")
+    babeldoc_pool_max_workers: int = Field(default=20, alias="BABELDOC_POOL_MAX_WORKERS")
+    babeldoc_output_subdir: str = Field(default="babeldoc", alias="BABELDOC_OUTPUT_SUBDIR")
+
     task_workspace_root: str = "runtime/tasks"
     upload_tmp_root: str = "runtime/uploads"
     max_upload_bytes: int = 250 * 1024 * 1024

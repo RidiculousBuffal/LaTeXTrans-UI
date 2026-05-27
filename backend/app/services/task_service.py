@@ -14,6 +14,7 @@ from backend.app.models.task import (
     TaskArtifact,
     TaskArtifactType,
     TaskConfig,
+    TaskEngine,
     TaskEvent,
     TaskSourceType,
     TaskStatus,
@@ -35,6 +36,7 @@ from backend.app.schemas.task import (
     TaskSummaryResponse,
 )
 from backend.app.services.archive_service import ArchiveService
+from backend.app.services.babeldoc_service import BabelDocService
 from backend.app.services.storage_service import StorageService
 from backend.app.services.translation_service import TranslationService
 
@@ -45,6 +47,9 @@ class TaskService:
             TaskArtifactType.EXTRACTED_SOURCE,
             TaskArtifactType.TRANSLATED_PROJECT,
             TaskArtifactType.FINAL_PDF,
+            TaskArtifactType.SOURCE_PDF,
+            TaskArtifactType.TRANSLATED_PDF,
+            TaskArtifactType.BABELDOC_OUTPUT,
         }
     )
 
@@ -53,6 +58,7 @@ class TaskService:
         self.repository = TaskRepository(db)
         self.settings = get_settings()
         self.translation_service = TranslationService()
+        self.babeldoc_service = BabelDocService()
         self.archive_service = ArchiveService()
         self.storage_service = StorageService()
 
@@ -80,6 +86,7 @@ class TaskService:
     ) -> TaskDetailResponse:
         self._validate_upload_file(file)
         payload = TaskCreateRequest(
+            engine=TaskEngine.LATEX,
             task_name=task_name,
             source_type=TaskSourceType.UPLOAD,
             source_archive_name=file.filename,
@@ -102,6 +109,54 @@ class TaskService:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail=f"Failed to store upload: {exc}",
+            ) from exc
+        finally:
+            file.file.close()
+
+        from backend.app.workers.translation_runner import submit_task
+
+        submit_task(task.id)
+        return self.get_task_detail(task.id)
+
+    def create_pdf_task(
+        self,
+        *,
+        file: UploadFile,
+        task_name: str | None,
+        target_language: str,
+        model_name: str | None,
+        created_by: str | None,
+        env_profile: str,
+        options: dict[str, str],
+    ) -> TaskDetailResponse:
+        try:
+            self.babeldoc_service.validate_pdf_file(file.filename)
+        except ValueError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+        payload = TaskCreateRequest(
+            engine=TaskEngine.BABELDOC,
+            task_name=task_name,
+            source_type=TaskSourceType.PDF_UPLOAD,
+            source_archive_name=file.filename,
+            source_language="en",
+            target_language=target_language,
+            model_name=model_name,
+            created_by=created_by,
+            env_profile=env_profile,
+            options=options,
+        )
+        task = self._create_task_record(payload)
+        runtime_dirs = self.translation_service.ensure_runtime_dirs(task=task)
+        destination = Path(runtime_dirs["sources_dir"]) / Path(file.filename or "document.pdf").name
+
+        try:
+            with destination.open("wb") as output:
+                shutil.copyfileobj(file.file, output)
+        except Exception as exc:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Failed to store PDF upload: {exc}",
             ) from exc
         finally:
             file.file.close()
@@ -292,6 +347,7 @@ class TaskService:
         task = TranslationTask(
             id=task_id,
             task_name=task_name,
+            engine=payload.engine,
             source_type=payload.source_type,
             arxiv_id=payload.arxiv_id,
             source_archive_name=payload.source_archive_name,

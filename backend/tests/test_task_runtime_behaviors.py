@@ -7,8 +7,18 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
 from backend.app.db.base import Base
-from backend.app.models.task import TaskArtifact, TaskArtifactType, TaskConfig, TaskEvent, TaskSourceType, TaskStatus, TranslationTask
+from backend.app.models.task import (
+    TaskArtifact,
+    TaskArtifactType,
+    TaskConfig,
+    TaskEngine,
+    TaskEvent,
+    TaskSourceType,
+    TaskStatus,
+    TranslationTask,
+)
 from backend.app.repositories.task_repository import TaskRepository
+from backend.app.services.babeldoc_service import BabelDocService
 from backend.app.services.archive_service import ArchiveService
 from backend.app.services.task_service import TaskService
 from backend.app.services.translation_service import TranslationService
@@ -36,6 +46,7 @@ def seed_task(
     task = TranslationTask(
         id=task_id,
         task_name=f"task-{task_id}",
+        engine=TaskEngine.LATEX,
         source_type=TaskSourceType.ARXIV if arxiv_id else TaskSourceType.UPLOAD,
         arxiv_id=arxiv_id,
         source_archive_name=None if arxiv_id else f"{task_id}.tar.gz",
@@ -431,3 +442,138 @@ def test_run_task_marks_failed_when_pdf_missing(monkeypatch, tmp_path: Path) -> 
     assert refreshed.current_stage == TaskStatus.FAILED.value
     assert refreshed.error_message is not None
     assert "missing PDF output" in refreshed.error_message
+
+
+def test_babeldoc_service_validate_pdf_file_rejects_non_pdf() -> None:
+    service = BabelDocService()
+
+    try:
+        service.validate_pdf_file("paper.zip")
+    except ValueError as exc:
+        assert "Only .pdf files are supported." in str(exc)
+    else:
+        raise AssertionError("Expected non-pdf file to be rejected.")
+
+
+def test_babeldoc_runtime_env_uses_workspace_local_home(tmp_path: Path) -> None:
+    service = BabelDocService()
+
+    env = service.build_runtime_env(workspace_dir=tmp_path)
+
+    assert env["HOME"].startswith(str(tmp_path))
+    assert env["XDG_CACHE_HOME"].startswith(str(tmp_path))
+    assert Path(env["HOME"]).exists()
+    assert Path(env["XDG_CACHE_HOME"]).exists()
+
+
+def test_babeldoc_config_snapshot_records_engine_fields() -> None:
+    session = make_session()
+    task = seed_task(session, task_id="babeldoc-task", status=TaskStatus.PENDING)
+    task.engine = TaskEngine.BABELDOC
+    task.source_type = TaskSourceType.PDF_UPLOAD
+    task.source_archive_name = "paper.pdf"
+    session.commit()
+
+    payload = TaskCreateRequest(
+        engine=TaskEngine.BABELDOC,
+        source_type=TaskSourceType.PDF_UPLOAD,
+        source_archive_name="paper.pdf",
+        target_language="zh",
+        model_name="gpt-4.1",
+        options={"qps": "10", "pool_max_workers": "12"},
+    )
+
+    snapshot = TranslationService().build_config_snapshot(task=task, payload=payload)
+
+    assert snapshot["engine"] == "babeldoc"
+    assert snapshot["source_type"] == "pdf_upload"
+    assert snapshot["babeldoc"]["qps"] == 10
+    assert snapshot["babeldoc"]["pool_max_workers"] == 12
+    assert snapshot["babeldoc"]["openai_api_key_configured"] in {True, False}
+
+
+def test_run_babeldoc_task_registers_pdf_artifacts(monkeypatch, tmp_path: Path) -> None:
+    session = make_session()
+    task = seed_task(session, task_id="babeldoc-run", status=TaskStatus.PENDING)
+    task.engine = TaskEngine.BABELDOC
+    task.source_type = TaskSourceType.PDF_UPLOAD
+    task.source_archive_name = "sample.pdf"
+    task.configs[0].config_snapshot_json = {
+        "engine": "babeldoc",
+        "source_type": "pdf_upload",
+        "source_archive_name": "sample.pdf",
+        "runtime": {"options": {}},
+        "babeldoc": {"qps": 20, "pool_max_workers": 20},
+    }
+    session.commit()
+
+    workspace_dir = tmp_path / "workspace"
+    runtime_dir = workspace_dir / "runtime"
+    sources_dir = workspace_dir / "sources"
+    output_dir = workspace_dir / "output"
+    babeldoc_output_dir = output_dir / "babeldoc"
+    runtime_dir.mkdir(parents=True, exist_ok=True)
+    sources_dir.mkdir(parents=True, exist_ok=True)
+    babeldoc_output_dir.mkdir(parents=True, exist_ok=True)
+    (sources_dir / "sample.pdf").write_text("pdf-source", encoding="utf-8")
+    translated_pdf = babeldoc_output_dir / "sample-zh.pdf"
+    translated_pdf.write_text("translated-pdf", encoding="utf-8")
+
+    runtime_dirs = {
+        "workspace_dir": str(workspace_dir),
+        "runtime_dir": str(runtime_dir),
+        "sources_dir": str(sources_dir),
+        "output_dir": str(output_dir),
+        "babeldoc_output_dir": str(babeldoc_output_dir),
+    }
+
+    class FakeTranslationService:
+        def ensure_runtime_dirs(self, *, task: TranslationTask):
+            return runtime_dirs
+
+    class FakeBabelDocService:
+        def build_runtime_env(self, *, workspace_dir):
+            return {"HOME": str(workspace_dir)}
+
+        def build_command(self, **kwargs):
+            return ["babeldoc", "--files", "sample.pdf"]
+
+        def run_command(self, **kwargs):
+            class Result:
+                returncode = 0
+
+            return Result()
+
+        def find_translated_pdf(self, *, output_dir, original_name=None):
+            return str(translated_pdf)
+
+    class FakeStorageService:
+        def upload_path(self, *, task: TranslationTask, artifact_type: TaskArtifactType, file_path, metadata=None):
+            path = Path(file_path)
+            file_name = path.name
+            file_size = path.stat().st_size if path.exists() and path.is_file() else 0
+            return TaskArtifact(
+                task=task,
+                artifact_type=artifact_type,
+                object_key=f"{task.id}/{artifact_type.value.lower()}/{file_name}",
+                file_name=file_name,
+                content_type="application/octet-stream",
+                file_size=file_size,
+                version=1,
+                metadata_json=metadata or {},
+            )
+
+    monkeypatch.setattr(translation_runner, "TranslationService", lambda: FakeTranslationService())
+    monkeypatch.setattr(translation_runner, "BabelDocService", lambda: FakeBabelDocService())
+    monkeypatch.setattr(translation_runner, "StorageService", lambda: FakeStorageService())
+
+    translation_runner._run_task(task_id=task.id, db=session)
+
+    refreshed = TaskRepository(session).get_task_by_id(task.id)
+    assert refreshed is not None
+    assert refreshed.status == TaskStatus.SUCCEEDED
+    assert {artifact.artifact_type for artifact in refreshed.artifacts} == {
+        TaskArtifactType.SOURCE_PDF,
+        TaskArtifactType.TRANSLATED_PDF,
+        TaskArtifactType.BABELDOC_OUTPUT,
+    }

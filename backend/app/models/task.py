@@ -14,6 +14,12 @@ from backend.app.db.base import Base
 class TaskSourceType(str, enum.Enum):
     ARXIV = "arxiv"
     UPLOAD = "upload"
+    PDF_UPLOAD = "pdf_upload"
+
+
+class TaskEngine(str, enum.Enum):
+    LATEX = "latex"
+    BABELDOC = "babeldoc"
 
 
 class TaskStatus(str, enum.Enum):
@@ -30,9 +36,12 @@ class TaskStatus(str, enum.Enum):
 
 class TaskArtifactType(str, enum.Enum):
     SOURCE_ARCHIVE = "SOURCE_ARCHIVE"
+    SOURCE_PDF = "SOURCE_PDF"
     EXTRACTED_SOURCE = "EXTRACTED_SOURCE"
     TRANSLATED_PROJECT = "TRANSLATED_PROJECT"
     FINAL_PDF = "FINAL_PDF"
+    TRANSLATED_PDF = "TRANSLATED_PDF"
+    BABELDOC_OUTPUT = "BABELDOC_OUTPUT"
     LOG = "LOG"
     METADATA = "METADATA"
     INTERMEDIATE_JSON = "INTERMEDIATE_JSON"
@@ -47,6 +56,11 @@ class TranslationTask(Base):
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     task_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    engine: Mapped[TaskEngine] = mapped_column(
+        Enum(TaskEngine, native_enum=False),
+        nullable=False,
+        default=TaskEngine.LATEX,
+    )
     source_type: Mapped[TaskSourceType] = mapped_column(
         Enum(TaskSourceType, native_enum=False),
         nullable=False,

@@ -5,12 +5,13 @@ from typing import Any
 
 from pydantic import Field, model_validator
 
-from backend.app.models.task import TaskArtifactType, TaskSourceType, TaskStatus
+from backend.app.models.task import TaskArtifactType, TaskEngine, TaskSourceType, TaskStatus
 from backend.app.schemas.common import APIModel
 
 
 class TaskCreateRequest(APIModel):
     task_name: str | None = Field(default=None, max_length=255)
+    engine: TaskEngine = TaskEngine.LATEX
     source_type: TaskSourceType = TaskSourceType.ARXIV
     arxiv_id: str | None = Field(default=None, max_length=64)
     source_archive_name: str | None = Field(default=None, max_length=255)
@@ -28,6 +29,12 @@ class TaskCreateRequest(APIModel):
             raise ValueError("arxiv_id is required when source_type is 'arxiv'")
         if self.source_type == TaskSourceType.UPLOAD and not self.source_archive_name:
             raise ValueError("source_archive_name is required when source_type is 'upload'")
+        if self.source_type == TaskSourceType.PDF_UPLOAD and not self.source_archive_name:
+            raise ValueError("source_archive_name is required when source_type is 'pdf_upload'")
+        if self.engine == TaskEngine.BABELDOC and self.source_type != TaskSourceType.PDF_UPLOAD:
+            raise ValueError("engine 'babeldoc' requires source_type 'pdf_upload'")
+        if self.engine == TaskEngine.LATEX and self.source_type == TaskSourceType.PDF_UPLOAD:
+            raise ValueError("source_type 'pdf_upload' requires engine 'babeldoc'")
         return self
 
 
@@ -66,6 +73,7 @@ class TaskConfigResponse(APIModel):
 class TaskSummaryResponse(APIModel):
     id: str
     task_name: str
+    engine: TaskEngine
     source_type: TaskSourceType
     arxiv_id: str | None
     source_archive_name: str | None

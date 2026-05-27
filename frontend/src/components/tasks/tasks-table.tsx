@@ -43,6 +43,7 @@ export function TasksTable({ tasks }: { tasks: TaskSummary[] }) {
             </TableCell>
             <TableCell className="align-top">
               <div className="flex flex-col gap-1">
+                <Badge variant="secondary">{task.engine}</Badge>
                 <Badge variant="outline">{task.source_type}</Badge>
                 <span className="text-xs text-muted-foreground">
                   {task.arxiv_id ?? task.source_archive_name ?? "manual upload"}

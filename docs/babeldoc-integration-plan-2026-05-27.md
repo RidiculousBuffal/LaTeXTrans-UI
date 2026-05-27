@@ -35,9 +35,9 @@
 - 新增 BabelDOC 任务类型
 - 支持上传单个 PDF 文件并创建翻译任务
 - 在后端使用受控 CLI 子进程调用 BabelDOC
-- 归档输入 PDF、翻译后 PDF、日志、运行元数据
+- 归档输入 PDF、翻译后 PDF，以及必要的可交付产物
 - 在前端新增 PDF 翻译任务创建入口
-- 在任务详情页展示 BabelDOC 任务的状态、日志和产物
+- 在任务详情页展示 BabelDOC 任务的状态和产物
 
 ### 3.2 本期不做
 
@@ -62,6 +62,11 @@
 因此，MVP 推荐实现为：
 
 `FastAPI Task Runner -> BabelDOC CLI subprocess -> runtime 目录 -> MinIO 归档`
+
+补充约束：
+
+- `workspace/runtime/` 下的 `task.log`、`task-config.json`、`task-events.jsonl` 默认只保留在后端本地工作目录
+- 这些 runtime 文件可能包含敏感输入、运行参数或调试细节，因此不上传 MinIO，不登记到 `task_artifacts`，也不对前端提供下载入口
 
 ### 4.2 在任务模型中引入 `engine`
 
@@ -155,16 +160,12 @@
 - `TRANSLATED_PDF`
 - `BABELDOC_OUTPUT`
 
-保留已有通用类型：
-
-- `LOG`
-- `METADATA`
-
 说明：
 
 - `SOURCE_PDF` 用于归档原始上传 PDF
 - `TRANSLATED_PDF` 用于归档翻译后的最终 PDF
 - `BABELDOC_OUTPUT` 用于归档 BabelDOC 运行输出目录或其打包压缩产物
+- `LOG` / `METADATA` 这类 runtime 调试产物不作为 BabelDOC Web 任务的对外交付 artifact；若保留枚举，也仅作为内部保留类型，不默认上传
 
 #### `TaskConfig`
 
@@ -230,7 +231,41 @@ OpenAI 相关配置直接复用现有后端 settings，从 `.env` 读取即可�
 - 避免前端直接传密钥
 - 避免把 CLI 参数硬编码在代码里
 
-### 6.3 服务层新增职责
+### 6.3 启动时依赖校验
+
+建议在 FastAPI 后端启动阶段增加 BabelDOC 可执行文件校验。
+
+要求：
+
+- 服务启动时检查 `babeldoc` 是否存在
+- 校验目标优先使用配置中的 `BABELDOC_BIN`
+- 若配置的是命令名，则通过 `shutil.which(...)` 检查
+- 若配置的是绝对路径，则检查该路径是否存在且可执行
+- 校验失败时，FastAPI 应直接启动失败并抛出明确错误
+
+推荐行为：
+
+- 在 `backend/app/main.py` 启动流程中执行该校验
+- 只要系统声明支持 BabelDOC 任务，就不要把这个问题延迟到任务运行时才暴露
+
+报错信息建议包含：
+
+- 当前读取到的 `BABELDOC_BIN`
+- 建议的修复方式，例如安装 BabelDOC 或修正 `.env`
+
+示例错误语义：
+
+```text
+BabelDOC executable not found: babeldoc. Please install BabelDOC or set BABELDOC_BIN correctly in .env before starting the backend.
+```
+
+这样做的原因是：
+
+- 能把环境问题前置到部署和启动阶段
+- 避免用户在页面提交 PDF 任务后才发现后端无法执行
+- 对内部部署场景更友好，问题定位更直接
+
+### 6.4 服务层新增职责
 
 建议新增以下服务文件：
 
@@ -273,7 +308,7 @@ OpenAI 相关配置直接复用现有后端 settings，从 `.env` 读取即可�
 ]
 ```
 
-### 6.4 Worker 调度改造
+### 6.5 Worker 调度改造
 
 当前 `translation_runner.py` 只包含 LaTeX 执行路径，建议改为按 `engine` 分发：
 
@@ -294,7 +329,7 @@ OpenAI 相关配置直接复用现有后端 settings，从 `.env` 读取即可�
 - 失败处理、取消、最终归档逻辑尽量复用
 - 代码结构比单文件堆叠分支更清晰
 
-### 6.5 BabelDOC 运行目录约定
+### 6.6 BabelDOC 运行目录约定
 
 建议沿用当前任务 runtime 结构，在每个任务工作区内创建：
 
@@ -311,7 +346,12 @@ OpenAI 相关配置直接复用现有后端 settings，从 `.env` 读取即可�
 - 命令参数快照落在 `workspace/runtime/task-config.json`
 - 事件流落在 `workspace/runtime/task-events.jsonl`
 
-### 6.6 状态与事件设计
+说明：
+
+- 上述 runtime 文件用于后端本地排障与运维，不属于 MinIO artifacts
+- 前端状态展示优先复用数据库中的 `task_events`、`error_message`、`task_configs`，而不是直接暴露 runtime 文件下载
+
+### 6.7 状态与事件设计
 
 建议 BabelDOC 任务至少写入以下事件：
 
@@ -335,7 +375,7 @@ OpenAI 相关配置直接复用现有后端 settings，从 `.env` 读取即可�
 - 生成文件列表
 - 失败时的退出码
 
-### 6.7 失败处理
+### 6.8 失败处理
 
 BabelDOC 接入后，失败来源主要会新增以下几类：
 
@@ -345,7 +385,7 @@ BabelDOC 接入后，失败来源主要会新增以下几类：
 - 子进程返回非零退出码
 - 输出目录存在但未生成最终 PDF
 
-建议在 `error_message` 中保留简洁错误摘要，在 `task.log` 中保留完整 stderr/stdout。
+建议在 `error_message` 中保留简洁错误摘要，在本地 `task.log` 中保留完整 stderr/stdout，但不要将该日志作为 artifact 对外提供下载。
 
 失败分类建议：
 
@@ -355,7 +395,7 @@ BabelDOC 接入后，失败来源主要会新增以下几类：
 - `OUTPUT_VALIDATION_ERROR`
 - `STORAGE_ERROR`
 
-### 6.8 取消能力
+### 6.9 取消能力
 
 当前系统已支持任务取消，但 BabelDOC 任务若已进入子进程执行，仅修改数据库状态还不够。
 
@@ -485,7 +525,7 @@ MVP 页面字段建议保持最简：
 
 - 原始 PDF
 - 翻译后 PDF
-- 日志文件
+- 本地 runtime 日志文件（仅后端保留，不上传 artifact）
 - 输出目录压缩包
 
 ## 9. 数据库迁移建议
@@ -583,7 +623,7 @@ MVP 页面字段建议保持最简：
 - 增加 `pdf_upload`
 - 增加 `POST /api/tasks/pdf`
 - 增加 BabelDOC CLI runner
-- 完成 runtime 日志与 artifact 归档
+- 完成 PDF 交付产物归档，并明确 runtime 日志/元数据仅本地保留
 
 ### 阶段 3：前端最小可用支持
 
@@ -630,7 +670,7 @@ MVP 页面字段建议保持最简：
 
 缓解：
 
-- 标准输出和错误输出统一重定向到 `task.log`
+- 标准输出和错误输出统一重定向到本地 `task.log`
 - 定期写入任务事件
 
 ### 风险 3：配置错误导致任务批量失败
@@ -638,6 +678,7 @@ MVP 页面字段建议保持最简：
 缓解：
 
 - 增加启动时配置校验
+- 启动阶段校验 `babeldoc` 可执行文件是否存在，不满足时直接拒绝启动
 - 创建 BabelDOC 任务前做必要配置检查
 
 ### 风险 4：前端与现有 LaTeX 页面耦合过深

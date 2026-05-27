@@ -7,9 +7,12 @@ from backend.app.schemas.task import ArchiveGroupItem, ArchiveListItem, TaskSumm
 class ArchiveService:
     _VISIBLE_ARTIFACT_TYPES = frozenset(
         {
+            TaskArtifactType.SOURCE_PDF,
             TaskArtifactType.EXTRACTED_SOURCE,
             TaskArtifactType.TRANSLATED_PROJECT,
             TaskArtifactType.FINAL_PDF,
+            TaskArtifactType.TRANSLATED_PDF,
+            TaskArtifactType.BABELDOC_OUTPUT,
         }
     )
 

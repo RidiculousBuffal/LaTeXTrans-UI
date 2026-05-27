@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from backend.app.core.config import get_settings
-from backend.app.models.task import TranslationTask
+from backend.app.models.task import TaskEngine, TranslationTask
 from backend.app.schemas.task import TaskCreateRequest
 
 
@@ -18,7 +18,33 @@ class TranslationService:
         payload: TaskCreateRequest,
     ) -> dict:
         paper_list = [payload.arxiv_id] if payload.arxiv_id else []
+        if payload.engine == TaskEngine.BABELDOC:
+            return {
+                "engine": payload.engine.value,
+                "source_type": payload.source_type.value,
+                "source_archive_name": payload.source_archive_name,
+                "source_language": payload.source_language,
+                "target_language": payload.target_language,
+                "runtime": {
+                    "task_id": task.id,
+                    "output_name": payload.output_name,
+                    "options": payload.options,
+                },
+                "babeldoc": {
+                    "binary": self.settings.babeldoc_bin,
+                    "qps": int(payload.options.get("qps", self.settings.babeldoc_qps)),
+                    "pool_max_workers": int(
+                        payload.options.get("pool_max_workers", self.settings.babeldoc_pool_max_workers)
+                    ),
+                    "openai_model": task.model_name,
+                    "openai_base_url": bool(self.settings.openai_base_url),
+                    "openai_api_key_configured": bool(self.settings.openai_api_key),
+                },
+                "tex_sources_dir": str(Path(task.workspace_dir) / "sources"),
+                "output_dir": task.output_dir,
+            }
         return {
+            "engine": payload.engine.value,
             "paper_list": paper_list,
             "source_type": payload.source_type.value,
             "source_archive_name": payload.source_archive_name,
@@ -54,8 +80,9 @@ class TranslationService:
         sources_dir = workspace_dir / "sources"
         output_dir = Path(task.output_dir)
         runtime_dir = workspace_dir / "runtime"
+        babeldoc_output_dir = output_dir / self.settings.babeldoc_output_subdir
 
-        for directory in (workspace_dir, sources_dir, output_dir, runtime_dir):
+        for directory in (workspace_dir, sources_dir, output_dir, runtime_dir, babeldoc_output_dir):
             directory.mkdir(parents=True, exist_ok=True)
 
         return {
@@ -63,4 +90,5 @@ class TranslationService:
             "sources_dir": str(sources_dir),
             "output_dir": str(output_dir),
             "runtime_dir": str(runtime_dir),
+            "babeldoc_output_dir": str(babeldoc_output_dir),
         }

@@ -125,6 +125,11 @@ artifact 类型枚举已定义：
 - `METADATA`
 - `INTERMEDIATE_JSON`
 
+补充说明：
+
+- `LOG` / `METADATA` 枚举来自早期方案；当前产品约束下，这类 runtime 调试文件默认不作为对外交付 artifact 上传。
+- 后续 agent 应优先把 `task_artifacts` 用在源文件、工程目录、PDF 等业务产物上。
+
 #### task_events
 
 用于记录阶段时间线和结构化事件：
@@ -520,8 +525,11 @@ runner 最少要完成：
 - 解压后的源目录压缩包
 - 翻译后工程目录压缩包
 - 最终 PDF
-- 运行日志
-- 配置快照 JSON
+
+补充说明：
+
+- 这里的“归档”现在应理解为对外交付给前端/对象存储的业务产物。
+- `task.log`、`task-config.json`、`task-events.jsonl` 这类 runtime 文件可能包含敏感数据，默认只保留在本地工作目录，不上传 MinIO，不登记到 `task_artifacts`。
 
 建议实现：
 
@@ -530,15 +538,13 @@ runner 最少要完成：
 3. 增加 `upload_file`
 4. 增加 `upload_directory_as_zip`
 5. 增加 `presigned_get_url`
-6. 在任务成功/失败路径写入 `task_artifacts`
+6. 在任务成功/失败路径写入允许对外交付的 `task_artifacts`
 
 建议对象路径规则：
 
 - `{task_id}/source/...`
 - `{task_id}/translated/...`
 - `{task_id}/pdf/...`
-- `{task_id}/logs/...`
-- `{task_id}/metadata/...`
 
 ### 第五步：补上传接口
 
