@@ -42,16 +42,20 @@ export function TaskDetailPage() {
     refetchInterval: (query) => getTaskDetailPollingInterval(query.state.data?.status),
   })
 
+  const pollingInterval = getTaskDetailPollingInterval(taskQuery.data?.status)
+
   const artifactsQuery = useQuery({
     queryKey: ["task-artifacts", taskId],
     queryFn: () => listArtifacts(taskId),
     enabled: Boolean(taskId),
+    refetchInterval: pollingInterval,
   })
 
   const logsQuery = useQuery({
     queryKey: ["task-logs", taskId],
     queryFn: () => listLogs(taskId),
     enabled: Boolean(taskId),
+    refetchInterval: pollingInterval,
   })
 
   const retryMutation = useMutation({
