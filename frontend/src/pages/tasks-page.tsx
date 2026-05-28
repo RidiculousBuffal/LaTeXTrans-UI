@@ -21,8 +21,7 @@ import {
 } from "@/components/ui/empty"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Separator } from "@/components/ui/separator"
-import { Badge } from "@/components/ui/badge"
-import { formatDateTime } from "@/lib/utils-format"
+import { ListPagination } from "@/components/ui/list-pagination"
 import { useAuth } from "@/lib/auth-context"
 
 const defaultFilters: TaskListFilters = {
@@ -39,6 +38,8 @@ const defaultFilters: TaskListFilters = {
 export function TasksPage() {
   const [filters, setFilters] = useState<TaskListFilters>(defaultFilters)
   const { user } = useAuth()
+  const currentPage = filters.page ?? defaultFilters.page ?? 1
+  const currentPageSize = filters.page_size ?? defaultFilters.page_size ?? 20
 
   const tasksQuery = useQuery({
     queryKey: ["tasks", filters],
@@ -59,10 +60,13 @@ export function TasksPage() {
     ...(user?.role === "admin" ? [{ value: "all", label: "All (Admin)" }] : []),
   ]
 
+  function handlePageChange(page: number) {
+    setFilters((prev) => ({ ...prev, page }))
+  }
+
   return (
     <div className="flex flex-col gap-6">
-      <section className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_320px]">
-        <div className="flex flex-col gap-6">
+     <div className="flex flex-col gap-6">
           <Card className="overflow-visible">
             <CardHeader>
               <CardTitle>Task workspace</CardTitle>
@@ -108,7 +112,7 @@ export function TasksPage() {
                 </Link>
               </Button>
             </CardHeader>
-            <CardContent>
+            <CardContent className="flex flex-col gap-4 max-h-[480px]">
               {tasksQuery.isLoading ? (
                 <div className="flex flex-col gap-3">
                   <Skeleton className="h-12 w-full" />
@@ -116,7 +120,17 @@ export function TasksPage() {
                   <Skeleton className="h-12 w-full" />
                 </div>
               ) : tasksQuery.data && tasksQuery.data.items.length > 0 ? (
-                <TasksTable tasks={tasksQuery.data.items} />
+                <>
+                  <div className="overflow-x-auto">
+                    <TasksTable tasks={tasksQuery.data.items} />
+                  </div>
+                  <ListPagination
+                    page={tasksQuery.data.page ?? currentPage}
+                    pageSize={tasksQuery.data.page_size ?? currentPageSize}
+                    total={tasksQuery.data.total}
+                    onPageChange={handlePageChange}
+                  />
+                </>
               ) : (
                 <Empty>
                   <EmptyHeader>
@@ -138,73 +152,6 @@ export function TasksPage() {
             </CardContent>
           </Card>
         </div>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Failure pulse</CardTitle>
-            <CardDescription>
-              Recent failed tasks plus failed stage and failure type distributions from the backend summary endpoint.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-4">
-            {failuresQuery.isLoading ? (
-              <>
-                <Skeleton className="h-20 w-full" />
-                <Skeleton className="h-20 w-full" />
-              </>
-            ) : (
-              <>
-                <div className="flex flex-wrap gap-2">
-                  {Object.entries(failuresQuery.data?.failed_stage_counts ?? {}).map(
-                    ([stage, count]) => (
-                      <Badge key={stage} variant="outline">
-                        {stage}: {count}
-                      </Badge>
-                    )
-                  )}
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  {Object.entries(failuresQuery.data?.failed_type_counts ?? {}).map(
-                    ([failureType, count]) => (
-                      <Badge key={failureType} variant="secondary">
-                        {failureType}: {count}
-                      </Badge>
-                    )
-                  )}
-                </div>
-                <Separator />
-                <div className="flex flex-col gap-3">
-                  {failuresQuery.data?.recent_failed_tasks.length ? (
-                    failuresQuery.data.recent_failed_tasks.map((task) => (
-                      <Link
-                        key={task.id}
-                        to={`/tasks/${task.id}`}
-                        className="rounded-xl border p-3 transition-colors hover:bg-muted/40"
-                      >
-                        <div className="flex items-center justify-between gap-3">
-                          <p className="font-medium">{task.task_name}</p>
-                          <Badge variant="destructive">{task.current_stage}</Badge>
-                        </div>
-                        <p className="mt-1 text-sm text-muted-foreground">
-                          {task.error_message ?? "No error summary provided."}
-                        </p>
-                        <p className="mt-2 text-xs text-muted-foreground">
-                          Updated {formatDateTime(task.updated_at)}
-                        </p>
-                      </Link>
-                    ))
-                  ) : (
-                    <p className="text-sm text-muted-foreground">
-                      No recent failed tasks.
-                    </p>
-                  )}
-                </div>
-              </>
-            )}
-          </CardContent>
-        </Card>
-      </section>
     </div>
   )
 }
-

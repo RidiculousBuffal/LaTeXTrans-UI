@@ -15,7 +15,7 @@ import { formatDateTime, formatPercent } from "@/lib/utils-format"
 
 export function TasksTable({ tasks }: { tasks: TaskSummary[] }) {
   return (
-    <Table>
+    <Table >
       <TableHeader>
         <TableRow>
           <TableHead>Task</TableHead>

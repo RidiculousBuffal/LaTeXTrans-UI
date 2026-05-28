@@ -41,7 +41,7 @@ export function AppShell() {
 
   return (
     <div className="min-h-svh bg-[radial-gradient(circle_at_top_left,_var(--color-primary)/0.08,_transparent_28%),linear-gradient(180deg,var(--background),color-mix(in_oklab,var(--background)_92%,var(--color-muted)))] p-5">
-      <div className="mx-auto flex min-h-svh max-w-[1440px] flex-col px-4 pb-4 sm:px-6 lg:px-8">
+      <div className="mx-auto flex min-h-svh max-w-[1280px] flex-col px-4 pb-4 sm:px-6 lg:px-8">
         <header className="sticky top-0 z-10 -mx-4 mb-6 bg-[radial-gradient(circle_at_top_left,_var(--color-primary)/0.08,_transparent_28%),linear-gradient(180deg,var(--background),color-mix(in_oklab,var(--background)_92%,var(--color-muted)))] px-4  sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8">
           <div className="rounded-2xl border bg-background/90 px-4 py-3 shadow-sm backdrop-blur">
             <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">

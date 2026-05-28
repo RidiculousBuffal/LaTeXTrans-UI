@@ -25,6 +25,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
+import { ListPagination } from "@/components/ui/list-pagination"
 import { formatDateTime } from "@/lib/utils-format"
 import { StatusBadge } from "@/components/tasks/status-badge"
 import { useAuth } from "@/lib/auth-context"
@@ -43,6 +44,8 @@ const defaultFilters: TaskListFilters = {
 export function ArchivesPage() {
   const [filters, setFilters] = useState<TaskListFilters>(defaultFilters)
   const { user } = useAuth()
+  const currentPage = filters.page ?? defaultFilters.page ?? 1
+  const currentPageSize = filters.page_size ?? defaultFilters.page_size ?? 20
 
   const archivesQuery = useQuery({
     queryKey: ["archives", filters],
@@ -55,6 +58,10 @@ export function ArchivesPage() {
     { value: "public", label: "Public" },
     ...(user?.role === "admin" ? [{ value: "all", label: "All (Admin)" }] : []),
   ]
+
+  function handlePageChange(page: number) {
+    setFilters((prev) => ({ ...prev, page }))
+  }
 
   return (
     <div className="flex flex-col gap-6">
@@ -93,57 +100,67 @@ export function ArchivesPage() {
             Groups historical runs by arXiv ID so repeated translations are easier to reuse.
           </CardDescription>
         </CardHeader>
-        <CardContent>
+        <CardContent className="flex flex-col gap-4">
           {archivesQuery.isLoading ? (
             <div className="flex flex-col gap-3">
               <Skeleton className="h-12 w-full" />
               <Skeleton className="h-12 w-full" />
             </div>
           ) : archivesQuery.data?.items.length ? (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Archive group</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Runs</TableHead>
-                  <TableHead>Artifacts</TableHead>
-                  <TableHead>Latest created</TableHead>
-                  <TableHead className="text-right">Open</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {archivesQuery.data.items.map((group) => (
-                  <TableRow key={group.group_key}>
-                    <TableCell>
-                      <div className="flex flex-col gap-1">
-                        <p className="font-medium">
-                          {group.arxiv_id ?? group.latest_task.task_name}
-                        </p>
-                        <p className="text-xs text-muted-foreground">
-                          Latest task: {group.latest_task.task_name}
-                        </p>
-                        <p className="text-xs text-muted-foreground">
-                          {group.latest_task.source_archive_name ?? "Grouped archive history"}
-                        </p>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex flex-col gap-2">
-                        <StatusBadge status={group.latest_task.status} />
-                      </div>
-                    </TableCell>
-                    <TableCell>{group.task_count}</TableCell>
-                    <TableCell>{group.artifact_count}</TableCell>
-                    <TableCell>{formatDateTime(group.latest_created_at)}</TableCell>
-                    <TableCell className="text-right">
-                      <Button asChild variant="outline">
-                        <Link to={`/tasks/${group.latest_task.id}`}>Open latest</Link>
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+            <>
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Archive group</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Runs</TableHead>
+                      <TableHead>Artifacts</TableHead>
+                      <TableHead>Latest created</TableHead>
+                      <TableHead className="text-right">Open</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {archivesQuery.data.items.map((group) => (
+                      <TableRow key={group.group_key}>
+                        <TableCell>
+                          <div className="flex flex-col gap-1">
+                            <p className="font-medium">
+                              {group.arxiv_id ?? group.latest_task.task_name}
+                            </p>
+                            <p className="text-xs text-muted-foreground">
+                              Latest task: {group.latest_task.task_name}
+                            </p>
+                            <p className="text-xs text-muted-foreground">
+                              {group.latest_task.source_archive_name ?? "Grouped archive history"}
+                            </p>
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex flex-col gap-2">
+                            <StatusBadge status={group.latest_task.status} />
+                          </div>
+                        </TableCell>
+                        <TableCell>{group.task_count}</TableCell>
+                        <TableCell>{group.artifact_count}</TableCell>
+                        <TableCell>{formatDateTime(group.latest_created_at)}</TableCell>
+                        <TableCell className="text-right">
+                          <Button asChild variant="outline">
+                            <Link to={`/tasks/${group.latest_task.id}`}>Open latest</Link>
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+              <ListPagination
+                page={archivesQuery.data.page ?? currentPage}
+                pageSize={archivesQuery.data.page_size ?? currentPageSize}
+                total={archivesQuery.data.total}
+                onPageChange={handlePageChange}
+              />
+            </>
           ) : (
             <Empty>
               <EmptyHeader>
@@ -167,4 +184,3 @@ export function ArchivesPage() {
     </div>
   )
 }
-

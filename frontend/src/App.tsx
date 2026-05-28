@@ -1,5 +1,9 @@
 import { createBrowserRouter, RouterProvider } from "react-router-dom"
 
+import {
+  RouteErrorBoundary,
+  GlobalErrorBoundary,
+} from "@/components/errors/global-error-boundary"
 import { AuthProvider } from "@/lib/auth-context"
 
 import { AppShell } from "@/components/layout/app-shell"
@@ -16,18 +20,22 @@ const router = createBrowserRouter([
   {
     path: "/landing",
     element: <LandingPage />,
+    errorElement: <RouteErrorBoundary />,
   },
   {
     path: "/login",
     element: <LoginPage />,
+    errorElement: <RouteErrorBoundary />,
   },
   {
     path: "/register",
     element: <RegisterPage />,
+    errorElement: <RouteErrorBoundary />,
   },
   {
     path: "/",
     element: <AppShell />,
+    errorElement: <RouteErrorBoundary />,
     children: [
       {
         index: true,
@@ -56,7 +64,9 @@ const router = createBrowserRouter([
 function App() {
   return (
     <AuthProvider>
-      <RouterProvider router={router} />
+      <GlobalErrorBoundary>
+        <RouterProvider router={router} />
+      </GlobalErrorBoundary>
     </AuthProvider>
   )
 }
