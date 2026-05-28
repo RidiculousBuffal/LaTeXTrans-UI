@@ -328,7 +328,7 @@ function CollectionCard({ collection }: { collection: DiscoveryCollection }) {
                 >
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div>
-                      <p className="font-medium">{item.paper.title_zh ?? item.paper.title_en}</p>
+                      <p className="font-medium">{item.paper.title_en}</p>
                       <p className="mt-1 text-xs text-muted-foreground">
                         {item.paper.arxiv_id} {item.paper.primary_category ? `· ${item.paper.primary_category}` : ""}
                       </p>

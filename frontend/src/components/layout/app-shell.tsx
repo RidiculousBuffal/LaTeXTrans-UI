@@ -53,7 +53,10 @@ export function AppShell() {
     const { pathname } = location
 
     if (to === "/tasks") {
-      return pathname === "/tasks" || matchPath("/tasks/:taskId", pathname) !== null
+      return (
+        pathname === "/tasks" ||
+        (pathname !== "/tasks/new" && matchPath("/tasks/:taskId", pathname) !== null)
+      )
     }
 
     if (to === "/tasks/new") {

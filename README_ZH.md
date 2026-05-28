@@ -11,6 +11,80 @@
 
  `.env` 配置示例 参考 [.env.example](.env.example)
 
+## Docker 一体化启动
+
+在仓库根目录构建镜像：
+
+```bash
+docker build -t latex-trans-prod .
+```
+
+运行容器：
+
+```bash
+docker run --rm -p 8000:8000 --env-file .env latex-trans-prod
+```
+
+如果希望容器内同时自动启动 discovery Huey consumer，请确保 `.env` 中至少包含：
+
+```env
+DISCOVERY_HUEY_ENABLED=true
+REDIS_URL=redis://host.docker.internal:6379/1
+```
+
+当前容器入口脚本是 `./start.sh`，会：
+
+1. 启动 FastAPI API 服务
+2. 当 `DISCOVERY_HUEY_ENABLED=true` 时自动启动 discovery Huey consumer
+
+可选 consumer 参数：
+
+```env
+DISCOVERY_HUEY_WORKERS=2
+DISCOVERY_HUEY_WORKER_TYPE=thread
+```
+
+启动后可访问：
+
+- 前端：`http://127.0.0.1:8000/`
+- 后端 API：`http://127.0.0.1:8000/api`
+- OpenAPI 文档：`http://127.0.0.1:8000/api/docs`
+
+## 本地启动 Backend 与 Consumer
+
+如果要使用 discovery 定时任务或异步 manual trigger，本地建议同时启动 API 和 Huey consumer。
+
+推荐 `.env` 配置：
+
+```env
+DISCOVERY_HUEY_ENABLED=true
+REDIS_URL=redis://127.0.0.1:6379/1
+```
+
+在仓库根目录启动 API：
+
+```bash
+.venv/bin/uvicorn backend.app.main:app --host 0.0.0.0 --port 8000
+```
+
+另开一个终端启动 discovery consumer：
+
+```bash
+.venv/bin/huey_consumer -w 2 -k thread backend.app.workers.discovery_schedule.huey
+```
+
+如果想看更详细日志：
+
+```bash
+.venv/bin/huey_consumer -w 2 -k thread -v backend.app.workers.discovery_schedule.huey
+```
+
+说明：
+
+- 当 `DISCOVERY_HUEY_ENABLED=true` 时，`POST /api/admin/discovery/sync` 会直接把 run 入队到 Huey。
+- 当 `DISCOVERY_HUEY_ENABLED=false` 时，manual discovery sync 会自动退回 inline 执行。
+- 定时调度器也运行在同一个 Huey consumer 进程里。
+
 
 ## UI 示例
 ![img.png](imgs/img.png)

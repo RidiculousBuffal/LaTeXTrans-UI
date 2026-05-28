@@ -187,10 +187,10 @@ export function PaperDetailPage() {
                   </div>
                   <div className="space-y-2">
                     <h1 className="font-heading text-3xl font-semibold tracking-tight text-slate-900">
-                      {paper.title_zh ?? paper.title_en}
+                      {paper.title_en }
                     </h1>
                     {paper.title_zh ? (
-                      <p className="max-w-4xl text-base text-slate-700">{paper.title_en}</p>
+                      <p className="max-w-4xl text-base text-slate-700">{paper.title_zh}</p>
                     ) : null}
                   </div>
                 </div>
@@ -234,7 +234,6 @@ export function PaperDetailPage() {
               <Card>
                 <CardHeader>
                   <CardTitle>Abstract</CardTitle>
-                  <CardDescription>Chinese summary first, then the original abstract.</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <div className="rounded-xl border bg-muted/20 p-4 text-sm leading-7">

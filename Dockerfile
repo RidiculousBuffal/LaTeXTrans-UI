@@ -66,9 +66,11 @@ RUN pip install BabelDOC==0.5.23
 COPY backend ./backend
 COPY terms ./terms
 COPY --from=frontend-builder /app/frontend/dist ./frontend/dist
+COPY start.sh ./start.sh
 
 RUN mkdir -p runtime/tasks runtime/uploads
+RUN chmod +x /app/start.sh
 
 EXPOSE 8000
 
-CMD ["sh", "-c", "uvicorn backend.app.main:app --host 0.0.0.0 --port ${PORT}"]
+CMD ["./start.sh"]

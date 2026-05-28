@@ -26,11 +26,65 @@ Run the backend API and bundled frontend together on port `8000`:
 docker run --rm -p 8000:8000 --env-file .env latex-trans-prod
 ```
 
+If you want the container to also start the discovery Huey consumer, make sure these env vars are present in `.env`:
+
+```env
+DISCOVERY_HUEY_ENABLED=true
+REDIS_URL=redis://host.docker.internal:6379/1
+```
+
+The container entrypoint now uses `./start.sh`, which:
+
+1. Starts the FastAPI API server
+2. Starts the discovery Huey consumer when `DISCOVERY_HUEY_ENABLED=true`
+
+Optional consumer tuning env vars:
+
+```env
+DISCOVERY_HUEY_WORKERS=2
+DISCOVERY_HUEY_WORKER_TYPE=thread
+```
+
 After the container starts:
 
 - Frontend UI: `http://127.0.0.1:8000/`
 - Backend API: `http://127.0.0.1:8000/api`
 - OpenAPI docs: `http://127.0.0.1:8000/api/docs`
+
+## Local Backend + Consumer Run
+
+For discovery periodic jobs and async manual triggers, you need both the API server and the Huey consumer.
+
+Recommended `.env` entries:
+
+```env
+DISCOVERY_HUEY_ENABLED=true
+REDIS_URL=redis://127.0.0.1:6379/1
+```
+
+Start the API server from the repo root:
+
+```bash
+.venv/bin/uvicorn backend.app.main:app --host 0.0.0.0 --port 8000
+```
+
+Start the discovery consumer in another terminal:
+
+```bash
+.venv/bin/huey_consumer -w 2 -k thread backend.app.workers.discovery_schedule.huey
+```
+
+Verbose mode:
+
+```bash
+.venv/bin/huey_consumer -w 2 -k thread -v backend.app.workers.discovery_schedule.huey
+```
+
+Behavior notes:
+
+- `POST /api/admin/discovery/sync` with `DISCOVERY_HUEY_ENABLED=true` will enqueue the run to Huey.
+- If `DISCOVERY_HUEY_ENABLED=false`, manual discovery sync falls back to inline execution.
+- The periodic scheduler also runs inside the same Huey consumer process.
 
 
 ## UI Example
