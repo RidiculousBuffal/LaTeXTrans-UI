@@ -29,7 +29,6 @@ import type {
 } from "@/lib/types"
 import {
   formatCollectionTranslationMode,
-  formatDateTime,
   formatRelativeTime,
   formatTranslateDecision,
   getErrorMessage,
@@ -60,11 +59,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Skeleton } from "@/components/ui/skeleton"
 import { Textarea } from "@/components/ui/textarea"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
-import { cn } from "@/lib/utils"
 
 const defaultFilters: DiscoveryPaperListFilters = {
   page: 1,
-  page_size: 12,
+  page_size: 10,
   category: "",
   keyword: "",
   worth_read: "",
@@ -293,7 +291,7 @@ function PaperCard({
   )
 
   return (
-    <Card className="overflow-hidden border-border/80 bg-card/90">
+    <Card className="border-border/80 bg-card/90 h-max">
       <CardHeader className="gap-4">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="space-y-2">
@@ -458,7 +456,7 @@ export function DiscoverPage() {
   return (
     <div className="flex flex-col gap-6">
       <section className="grid gap-4 lg:grid-cols-[1.2fr_0.8fr]">
-        <Card className="overflow-hidden border-none bg-[linear-gradient(135deg,color-mix(in_oklab,var(--color-primary)_16%,white),color-mix(in_oklab,var(--color-accent)_48%,white))] shadow-sm">
+        <Card className=" border-none bg-[linear-gradient(135deg,color-mix(in_oklab,var(--color-primary)_16%,white),color-mix(in_oklab,var(--color-accent)_48%,white))] shadow-sm">
           <CardContent className="flex h-full flex-col justify-between gap-6 p-6">
             <div className="space-y-3">
               <Badge variant="secondary" className="w-fit bg-white/65 text-slate-700">
@@ -512,7 +510,7 @@ export function DiscoverPage() {
               Keep discovery upstream. Collections are still the primary decision point.
             </CardDescription>
           </CardHeader>
-          <CardContent className="flex flex-col gap-4">
+          <CardContent className="flex flex-col gap-4 ">
             {collectionsQuery.isLoading ? (
               <>
                 <Skeleton className="h-16 w-full" />
@@ -706,7 +704,7 @@ export function DiscoverPage() {
         </CardContent>
       </Card>
 
-      <section className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
+      <section className="flex ">
         <Card>
           <CardHeader>
             <CardTitle>All papers</CardTitle>
@@ -716,14 +714,14 @@ export function DiscoverPage() {
                 : "Loading papers from the latest visible discovery data."}
             </CardDescription>
           </CardHeader>
-          <CardContent className="flex flex-col gap-4">
+          <CardContent className="flex flex-col p-2  max-h-[900px] overflow-y-auto">
             {papersQuery.isLoading ? (
               <>
                 <Skeleton className="h-56 w-full" />
                 <Skeleton className="h-56 w-full" />
               </>
             ) : papersQuery.data?.items.length ? (
-              <>
+              <div className={'flex flex-col gap-3'}>
                 {papersQuery.data.items.map((paper) => (
                   <PaperCard
                     key={paper.id}
@@ -732,13 +730,15 @@ export function DiscoverPage() {
                     onAdd={handleOpenAddDialog}
                   />
                 ))}
-                <ListPagination
+                <div className={'px-2'}>
+                  <ListPagination
                   page={papersQuery.data.page}
                   pageSize={papersQuery.data.page_size}
                   total={papersQuery.data.total}
                   onPageChange={handlePageChange}
                 />
-              </>
+                </div>
+              </div>
             ) : (
               <Empty className="border">
                 <EmptyHeader>
@@ -754,116 +754,6 @@ export function DiscoverPage() {
             )}
           </CardContent>
         </Card>
-
-        <div className="flex flex-col gap-6">
-          <Card>
-            <CardHeader>
-              <CardTitle>Today&apos;s picks</CardTitle>
-              <CardDescription>
-                Top items from the latest digest, grouped by category.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="flex flex-col gap-4">
-              {digestQuery.isLoading ? (
-                <>
-                  <Skeleton className="h-28 w-full" />
-                  <Skeleton className="h-28 w-full" />
-                </>
-              ) : digestQuery.data?.groups.length ? (
-                digestQuery.data.groups.slice(0, 4).map((group) => (
-                  <div key={group.category} className="rounded-xl border bg-muted/20 p-4">
-                    <div className="mb-3 flex items-center justify-between gap-2">
-                      <div className="flex items-center gap-2">
-                        <Badge>{group.category}</Badge>
-                        <span className="text-xs text-muted-foreground">
-                          {group.papers.length} papers
-                        </span>
-                      </div>
-                    </div>
-                    <div className="space-y-3">
-                      {group.papers.slice(0, 3).map((paper) => (
-                        <Link
-                          key={paper.id}
-                          to={`/papers/${paper.id}`}
-                          className={cn(
-                            "block rounded-lg border bg-background px-3 py-3 transition-colors hover:border-primary/40 hover:bg-muted/20"
-                          )}
-                        >
-                          <div className="flex items-start justify-between gap-3">
-                            <div>
-                              <p className="font-medium leading-snug">
-                                {paper.title_zh ?? paper.title_en}
-                              </p>
-                              <p className="mt-1 text-xs text-muted-foreground">
-                                {paper.arxiv_id}
-                              </p>
-                            </div>
-                            {paper.worth_read ? (
-                              <SparklesIcon className="mt-0.5 size-4 text-emerald-600" />
-                            ) : null}
-                          </div>
-                        </Link>
-                      ))}
-                    </div>
-                  </div>
-                ))
-              ) : (
-                <Empty className="min-h-0 border">
-                  <EmptyHeader>
-                    <EmptyMedia variant="icon">
-                      <OrbitIcon />
-                    </EmptyMedia>
-                    <EmptyTitle>No digest yet</EmptyTitle>
-                    <EmptyDescription>
-                      Discovery sync has not produced a visible digest for you yet.
-                    </EmptyDescription>
-                  </EmptyHeader>
-                </Empty>
-              )}
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>Latest sync details</CardTitle>
-              <CardDescription>
-                Helpful for checking freshness before you start triaging.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              {digestQuery.data?.run ? (
-                <div className="space-y-3 text-sm">
-                  <div className="flex items-center justify-between gap-3">
-                    <span className="text-muted-foreground">Trigger source</span>
-                    <span className="font-medium">{digestQuery.data.run.trigger_source}</span>
-                  </div>
-                  <div className="flex items-center justify-between gap-3">
-                    <span className="text-muted-foreground">Categories</span>
-                    <span className="font-medium">
-                      {digestQuery.data.run.categories_json.join(", ") || "—"}
-                    </span>
-                  </div>
-                  <div className="flex items-center justify-between gap-3">
-                    <span className="text-muted-foreground">Updated</span>
-                    <span className="font-medium">
-                      {formatDateTime(digestQuery.data.run.updated_at)}
-                    </span>
-                  </div>
-                  {digestQuery.data.run.error_message ? (
-                    <Alert variant="destructive" className="mt-4">
-                      <AlertTitle>Last run reported an error</AlertTitle>
-                      <AlertDescription>{digestQuery.data.run.error_message}</AlertDescription>
-                    </Alert>
-                  ) : null}
-                </div>
-              ) : (
-                <p className="text-sm text-muted-foreground">
-                  No successful discovery run is visible yet.
-                </p>
-              )}
-            </CardContent>
-          </Card>
-        </div>
       </section>
 
       <AddToCollectionDialog

@@ -1,3 +1,7 @@
+from backend.app.models.user import User, UserRole
+from backend.app.models.quota import UserQuotaAccount, UserQuotaLedger
+from backend.app.models.sharing import TaskShareGrant
+from backend.app.models.cache import TranslationCacheEntry, CacheEntryStatus
 from backend.app.models.task import (
     TaskArtifact,
     TaskArtifactType,
@@ -22,6 +26,9 @@ from backend.app.models.discovery import (
 )
 
 __all__ = [
+    "CacheEntryStatus",
+    "TaskShareGrant",
+    "TranslationCacheEntry",
     "ArxivCollection",
     "ArxivCollectionItem",
     "ArxivCollectionTranslationMode",
@@ -40,4 +47,8 @@ __all__ = [
     "TaskSourceType",
     "TaskStatus",
     "TranslationTask",
+    "User",
+    "UserQuotaAccount",
+    "UserQuotaLedger",
+    "UserRole",
 ]

@@ -10,7 +10,7 @@ import { useAuth } from "@/lib/auth-context"
 const navigation = [
   { to: "/discover", label: "Discover" },
   { to: "/collections", label: "Collections" },
-  { to: "/", label: "Tasks" },
+  { to: "/tasks", label: "Tasks" },
   { to: "/tasks/new", label: "New Task" },
   { to: "/archives", label: "Archives" },
 ]
@@ -46,16 +46,7 @@ export function AppShell() {
       <div className="mx-auto flex min-h-svh max-w-7xl flex-col px-4 pb-4 sm:px-6 lg:px-8">
         <header className="sticky top-0 z-10 -mx-4 mb-6 bg-[radial-gradient(circle_at_top_left,var(--color-primary)/0.08,transparent_28%),linear-gradient(180deg,var(--background),color-mix(in_oklab,var(--background)_92%,var(--color-muted)))] px-4  sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8">
           <div className="rounded-2xl border bg-background/90 px-4 py-3 shadow-sm backdrop-blur">
-            <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-              <div className="flex flex-col gap-1">
-                <p className="text-xs font-medium uppercase tracking-[0.24em] text-muted-foreground">
-                  LaTeXTrans Control Plane
-                </p>
-                <h1 className="font-heading text-2xl font-semibold tracking-tight">
-                  Discovery, translation tasks, archives, and runtime status
-                </h1>
-              </div>
-              <div className="flex items-center gap-2 flex-wrap">
+           <div className="flex items-center gap-2 justify-between">
                 <nav className="flex flex-wrap gap-2">
                   {navItems.map((item) => (
                     <NavLink
@@ -75,7 +66,8 @@ export function AppShell() {
                     </NavLink>
                   ))}
                 </nav>
-                {user && (
+                <div className={'flex gap-3 items-center'}>
+                  {user && (
                   <div className="flex items-center gap-2 text-sm">
                     {user.role === "admin" && (
                       <ShieldIcon className="h-4 w-4 text-orange-500" />
@@ -111,8 +103,8 @@ export function AppShell() {
                     <span className="sr-only">Sign out</span>
                   </Button>
                 )}
+                </div>
               </div>
-            </div>
           </div>
         </header>
         <main className="flex-1 pb-8">

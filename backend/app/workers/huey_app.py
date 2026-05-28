@@ -7,6 +7,7 @@ from backend.app.core.config import get_settings
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
+HUEY_CONSUMER_IMPORT_PATH = "backend.app.workers.discovery_schedule.huey"
 
 try:
     from huey import MemoryHuey, RedisHuey
@@ -24,6 +25,10 @@ def create_huey():
     if HUEY_AVAILABLE:
         return MemoryHuey("latextrans-discovery")
     return None
+
+
+def is_async_huey_enabled() -> bool:
+    return HUEY_AVAILABLE and settings.discovery_huey_enabled and huey is not None
 
 
 huey = create_huey()

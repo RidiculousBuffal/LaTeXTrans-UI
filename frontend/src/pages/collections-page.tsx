@@ -431,7 +431,7 @@ export function CollectionsPage() {
               </p>
             </div>
           </div>
-          <div className="grid gap-3 sm:grid-cols-3">
+          <div className="flex items-center gap-3">
             <div className="rounded-2xl bg-white/70 p-4">
               <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Collections</p>
               <p className="mt-2 text-3xl font-semibold text-slate-900">

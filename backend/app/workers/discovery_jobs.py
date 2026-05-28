@@ -23,6 +23,16 @@ def _run_sync_job(*, source_run_date: date | None = None, force_refresh: bool = 
         db.close()
 
 
+def _execute_existing_run(*, run_id: str) -> str:
+    db = SessionLocal()
+    try:
+        pipeline = ArxivPipelineService(db)
+        pipeline.execute_run(run_id)
+        return run_id
+    finally:
+        db.close()
+
+
 if huey is not None:
 
     @huey.task()
@@ -30,8 +40,15 @@ if huey is not None:
         run_date = date.fromisoformat(source_run_date) if source_run_date else None
         return _run_sync_job(source_run_date=run_date, force_refresh=force_refresh)
 
+    @huey.task()
+    def execute_discovery_run(run_id: str) -> str:
+        return _execute_existing_run(run_id=run_id)
+
 else:
 
     def sync_daily_arxiv_digest(source_run_date: str | None = None, force_refresh: bool = False) -> str:
         run_date = date.fromisoformat(source_run_date) if source_run_date else None
         return _run_sync_job(source_run_date=run_date, force_refresh=force_refresh)
+
+    def execute_discovery_run(run_id: str) -> str:
+        return _execute_existing_run(run_id=run_id)

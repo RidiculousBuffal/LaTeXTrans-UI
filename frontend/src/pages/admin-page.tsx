@@ -1,8 +1,10 @@
 import { useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { format } from "date-fns"
 import { toast } from "sonner"
 import { Navigate } from "react-router-dom"
 import {
+  CalendarIcon,
   CoinsIcon,
   KeyRoundIcon,
   Loader2Icon,
@@ -21,6 +23,7 @@ import {
 } from "@/lib/api"
 import type { AdminUserItem, DiscoveryRun } from "@/lib/types"
 import { Button } from "@/components/ui/button"
+import { Calendar } from "@/components/ui/calendar"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
@@ -47,6 +50,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Label } from "@/components/ui/label"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { useAuth } from "@/lib/auth-context"
 import {
   formatDateTime,
@@ -56,6 +60,7 @@ import {
 } from "@/lib/utils-format"
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
+import { cn } from "@/lib/utils"
 
 function CreateUserDialog({
   open,
@@ -299,14 +304,14 @@ function DiscoverySyncCard({
   onRefresh: () => void
 }) {
   const queryClient = useQueryClient()
-  const [sourceRunDate, setSourceRunDate] = useState("")
+  const [sourceRunDate, setSourceRunDate] = useState<Date | undefined>(undefined)
   const [forceRefresh, setForceRefresh] = useState("false")
   const [runInline, setRunInline] = useState("false")
 
   const mutation = useMutation({
     mutationFn: () =>
       adminTriggerDiscoverySync({
-        source_run_date: sourceRunDate || undefined,
+        source_run_date: sourceRunDate ? format(sourceRunDate, "yyyy-MM-dd") : undefined,
         force_refresh: forceRefresh === "true",
         run_inline: runInline === "true",
       }),
@@ -334,12 +339,30 @@ function DiscoverySyncCard({
         <div className="grid gap-4 md:grid-cols-3">
           <div className="space-y-1">
             <Label htmlFor="sync-date">Source run date</Label>
-            <Input
-              id="sync-date"
-              type="date"
-              value={sourceRunDate}
-              onChange={(event) => setSourceRunDate(event.target.value)}
-            />
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button
+                  id="sync-date"
+                  type="button"
+                  variant="outline"
+                  className={cn(
+                    "w-full justify-start text-left font-normal",
+                    !sourceRunDate && "text-muted-foreground"
+                  )}
+                >
+                  <CalendarIcon data-icon="inline-start" />
+                  {sourceRunDate ? format(sourceRunDate, "PPP") : "Pick a source run date"}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-auto p-0" align="start">
+                <Calendar
+                  mode="single"
+                  captionLayout="dropdown"
+                  selected={sourceRunDate}
+                  onSelect={setSourceRunDate}
+                />
+              </PopoverContent>
+            </Popover>
           </div>
           <div className="space-y-1">
             <Label htmlFor="sync-force">Force refresh</Label>

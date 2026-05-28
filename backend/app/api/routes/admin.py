@@ -26,6 +26,8 @@ from backend.app.services.auth_service import hash_password, require_admin
 from backend.app.services.arxiv_pipeline_service import ArxivPipelineService
 from backend.app.services.cache_service import CacheService
 from backend.app.services.quota_service import QuotaService
+from backend.app.workers.discovery_jobs import execute_discovery_run
+from backend.app.workers.huey_app import is_async_huey_enabled
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -191,6 +193,10 @@ def sync_discovery(
         force_refresh=payload.force_refresh,
     )
     if payload.run_inline:
+        run = pipeline.execute_run(run.id)
+    elif is_async_huey_enabled():
+        execute_discovery_run(run.id)
+    else:
         run = pipeline.execute_run(run.id)
     return DiscoveryRunResponse.model_validate(run)
 

@@ -260,3 +260,79 @@ def test_create_and_update_collection_via_api(client: TestClient, db_session: Se
     assert updated["translation_mode"] == "auto"
     assert updated["auto_translate_enabled"] is True
     assert updated["prefer_keywords"] == "multimodal"
+
+
+def test_admin_sync_queues_run_when_async_huey_enabled(
+    client: TestClient,
+    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    admin = _create_user(db_session, "admin", role=UserRole.ADMIN)
+    collection = ArxivCollection(
+        user_id=admin.id,
+        name="Math",
+        categories_json=["cs.MA"],
+    )
+    db_session.add(collection)
+    db_session.commit()
+
+    queued: list[str] = []
+
+    def fake_async_enabled() -> bool:
+        return True
+
+    def fake_enqueue(run_id: str):
+        queued.append(run_id)
+        return None
+
+    monkeypatch.setattr("backend.app.api.routes.admin.is_async_huey_enabled", fake_async_enabled)
+    monkeypatch.setattr("backend.app.api.routes.admin.execute_discovery_run", fake_enqueue)
+
+    _login(client, "admin")
+    response = client.post(
+        "/api/admin/discovery/sync",
+        json={"source_run_date": "2026-05-28", "force_refresh": True},
+    )
+
+    assert response.status_code == 202
+    payload = response.json()
+    assert payload["status"] == "PENDING"
+    assert queued == [payload["id"]]
+
+
+def test_admin_sync_falls_back_to_inline_when_async_huey_disabled(
+    client: TestClient,
+    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    admin = _create_user(db_session, "admin2", role=UserRole.ADMIN)
+    collection = ArxivCollection(
+        user_id=admin.id,
+        name="Math",
+        categories_json=["cs.MA"],
+    )
+    db_session.add(collection)
+    db_session.commit()
+
+    monkeypatch.setattr("backend.app.api.routes.admin.is_async_huey_enabled", lambda: False)
+
+    def fake_execute_run(self, run_id: str):
+        run = self.repository.get_run(run_id)
+        assert run is not None
+        run.status = ArxivDiscoveryRunStatus.SUCCEEDED
+        run.started_at = datetime.utcnow()
+        run.finished_at = datetime.utcnow()
+        self.repository.commit()
+        return run
+
+    monkeypatch.setattr("backend.app.api.routes.admin.ArxivPipelineService.execute_run", fake_execute_run)
+
+    _login(client, "admin2")
+    response = client.post(
+        "/api/admin/discovery/sync",
+        json={"source_run_date": "2026-05-28", "force_refresh": True},
+    )
+
+    assert response.status_code == 202
+    payload = response.json()
+    assert payload["status"] == "SUCCEEDED"
