@@ -31,9 +31,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setRegistrationEnabled(configResult.value.registration_enabled)
         }
         if (meResult.status === "fulfilled") {
-          setUser(meResult.value)
+          setUser(() => meResult.value)
         } else {
-          setUser(null)
+          // Avoid letting an older unauthenticated /auth/me probe clear a
+          // newer user state that was just established by a successful login.
+          setUser((currentUser) => currentUser)
         }
       })
       .finally(() => setIsLoading(false))
