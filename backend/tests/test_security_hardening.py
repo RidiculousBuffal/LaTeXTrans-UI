@@ -140,7 +140,7 @@ def test_login_rate_limit_blocks_repeated_attempts(client: TestClient, reset_set
     assert second.headers["retry-after"] == "300"
 
 
-def test_non_admin_task_detail_is_sanitized_and_logs_are_forbidden(db_session: Session) -> None:
+def test_non_admin_task_detail_is_sanitized_and_logs_remain_accessible(db_session: Session, tmp_path: Path) -> None:
     user = _create_user(db_session, username="bob", password="supersecret123")
     task = TranslationTask(
         id="task-1",
@@ -197,6 +197,13 @@ def test_non_admin_task_detail_is_sanitized_and_logs_are_forbidden(db_session: S
     db_session.add(task)
     db_session.commit()
 
+    runtime_dir = tmp_path / "workspace" / "runtime"
+    runtime_dir.mkdir(parents=True, exist_ok=True)
+    log_path = runtime_dir / "task.log"
+    log_path.write_text("compile step\nmissing pdf\n", encoding="utf-8")
+    task.workspace_dir = str(tmp_path / "workspace")
+    db_session.commit()
+
     detail = TaskService(db_session).get_task_detail(task.id, current_user=user)
 
     assert detail.workspace_dir is None
@@ -206,9 +213,9 @@ def test_non_admin_task_detail_is_sanitized_and_logs_are_forbidden(db_session: S
     assert detail.configs[0].config_snapshot_json == {"runtime": {"output_name": "paper"}}
     assert detail.events[0].details_json == {"error": "Task failed while compiling translated output."}
 
-    with pytest.raises(Exception) as exc_info:
-        TaskService(db_session).list_logs(task.id, current_user=user)
-    assert getattr(exc_info.value, "status_code", None) == 403
+    logs = TaskService(db_session).list_logs(task.id, current_user=user)
+    assert logs.exists is True
+    assert logs.content == "compile step\nmissing pdf\n"
 
 
 def test_stream_upload_to_temp_enforces_size_limit(db_session: Session, reset_settings_and_rate_limits, tmp_path: Path) -> None:
@@ -235,4 +242,3 @@ def test_production_settings_reject_insecure_defaults() -> None:
             cors_origins=["*"],
             auth_cookie_secure=True,
         )
-

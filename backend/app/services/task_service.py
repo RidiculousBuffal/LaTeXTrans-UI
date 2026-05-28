@@ -487,8 +487,6 @@ class TaskService:
             access = AccessService(self.db)
             if not access.can_view_task(task, current_user):
                 raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied.")
-        if current_user is not None and current_user.role != UserRole.ADMIN:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Task runtime logs are restricted to admins.")
         if not task.workspace_dir:
             return TaskLogsResponse(task_id=task.id, exists=False, content="")
 
