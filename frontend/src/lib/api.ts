@@ -1,10 +1,24 @@
 import axios from "axios"
 
 import type {
+  AdminDiscoveryRunList,
+  AdminDiscoverySyncPayload,
   AdminUserItem,
   AdminUserList,
   AuthConfig,
   ArtifactListResponse,
+  DiscoveryCollection,
+  DiscoveryCollectionCreatePayload,
+  DiscoveryCollectionItemCreatePayload,
+  DiscoveryCollectionList,
+  DiscoveryCollectionUpdatePayload,
+  DiscoveryDailyDigest,
+  DiscoveryPaperDetail,
+  DiscoveryPaperListFilters,
+  DiscoveryPaperTaskCreatePayload,
+  DiscoveryPaperTaskResponse,
+  DiscoveryRun,
+  PaginatedDiscoveryPapers,
   CreateArxivTaskPayload,
   CreatePdfTaskPayload,
   CreateUploadTaskPayload,
@@ -60,6 +74,12 @@ function buildSearchParams(filters: TaskListFilters) {
         }
         return [key, value]
       })
+  )
+}
+
+function buildDiscoverySearchParams(filters: DiscoveryPaperListFilters) {
+  return Object.fromEntries(
+    Object.entries(filters).filter(([, value]) => value !== undefined && value !== "")
   )
 }
 
@@ -245,4 +265,70 @@ export function adminCreateUser(payload: {
 
 export function adminChangePassword(userId: string, newPassword: string) {
   return withApiError(api.patch(`/admin/users/${userId}/password`, { new_password: newPassword }))
+}
+
+// Discovery
+export function listDiscoveryPapers(filters: DiscoveryPaperListFilters) {
+  return withApiError(
+    api.get<PaginatedDiscoveryPapers>("/discovery/papers", {
+      params: buildDiscoverySearchParams(filters),
+    })
+  )
+}
+
+export function getDiscoveryPaper(paperId: number) {
+  return withApiError(api.get<DiscoveryPaperDetail>(`/discovery/papers/${paperId}`))
+}
+
+export function getDiscoveryDailyDigest() {
+  return withApiError(api.get<DiscoveryDailyDigest>("/discovery/daily-digest"))
+}
+
+export function listDiscoveryCollections() {
+  return withApiError(api.get<DiscoveryCollectionList>("/discovery/collections"))
+}
+
+export function createDiscoveryCollection(payload: DiscoveryCollectionCreatePayload) {
+  return withApiError(api.post<DiscoveryCollection>("/discovery/collections", payload))
+}
+
+export function updateDiscoveryCollection(
+  collectionId: number,
+  payload: DiscoveryCollectionUpdatePayload
+) {
+  return withApiError(api.patch<DiscoveryCollection>(`/discovery/collections/${collectionId}`, payload))
+}
+
+export function addPaperToCollection(
+  collectionId: number,
+  payload: DiscoveryCollectionItemCreatePayload
+) {
+  return withApiError(
+    api.post<DiscoveryCollection>(`/discovery/collections/${collectionId}/items`, payload)
+  )
+}
+
+export function removePaperFromCollection(collectionId: number, paperId: number) {
+  return withApiError(api.delete<void>(`/discovery/collections/${collectionId}/items/${paperId}`))
+}
+
+export function createTaskFromDiscoveryPaper(
+  paperId: number,
+  payload: DiscoveryPaperTaskCreatePayload
+) {
+  return withApiError(
+    api.post<DiscoveryPaperTaskResponse>(`/discovery/papers/${paperId}/tasks`, payload)
+  )
+}
+
+export function adminTriggerDiscoverySync(payload: AdminDiscoverySyncPayload) {
+  return withApiError(api.post<DiscoveryRun>("/admin/discovery/sync", payload))
+}
+
+export function adminListDiscoveryRuns(page = 1, pageSize = 20) {
+  return withApiError(
+    api.get<AdminDiscoveryRunList>("/admin/discovery/runs", {
+      params: { page, page_size: pageSize },
+    })
+  )
 }

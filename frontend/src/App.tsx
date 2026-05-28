@@ -8,7 +8,10 @@ import { AuthProvider } from "@/lib/auth-context"
 
 import { AppShell } from "@/components/layout/app-shell"
 import { ArchivesPage } from "@/pages/archives-page"
+import { CollectionsPage } from "@/pages/collections-page"
+import { DiscoverPage } from "@/pages/discover-page"
 import { NewTaskPage } from "@/pages/new-task-page"
+import { PaperDetailPage } from "@/pages/paper-detail-page"
 import { TaskDetailPage } from "@/pages/task-detail-page"
 import { TasksPage } from "@/pages/tasks-page"
 import LoginPage from "@/pages/login-page"
@@ -39,6 +42,22 @@ const router = createBrowserRouter([
     children: [
       {
         index: true,
+        element: <DiscoverPage />,
+      },
+      {
+        path: "discover",
+        element: <DiscoverPage />,
+      },
+      {
+        path: "collections",
+        element: <CollectionsPage />,
+      },
+      {
+        path: "papers/:paperId",
+        element: <PaperDetailPage />,
+      },
+      {
+        path: "tasks",
         element: <TasksPage />,
       },
       {

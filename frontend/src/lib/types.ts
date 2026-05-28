@@ -161,6 +161,210 @@ export type TaskListFilters = {
   created_to?: string
 }
 
+export const collectionTranslationModes = ["manual", "auto"] as const
+export type CollectionTranslationMode = (typeof collectionTranslationModes)[number]
+
+export const translateDecisions = [
+  "pending",
+  "manual_requested",
+  "auto_queued",
+  "translated",
+] as const
+export type TranslateDecision = (typeof translateDecisions)[number]
+
+export const discoveryRunStatuses = ["PENDING", "RUNNING", "SUCCEEDED", "FAILED"] as const
+export type DiscoveryRunStatus = (typeof discoveryRunStatuses)[number]
+
+export type DiscoveryPaperListFilters = {
+  page?: number
+  page_size?: number
+  category?: string
+  keyword?: string
+  worth_read?: boolean | ""
+  translated?: boolean | ""
+  collection_id?: number | ""
+  source_run_date?: string
+}
+
+export type DiscoveryCollectionMembership = {
+  item_id: number
+  collection_id: number
+  collection_name: string
+  translate_decision: TranslateDecision
+  note: string | null
+  created_at: string
+  updated_at: string
+}
+
+export type DiscoveryPaperReview = {
+  id: number
+  collection_id: number
+  collection_name: string
+  review_type: "daily_judge"
+  model_name: string
+  worth_read: boolean
+  title_zh: string | null
+  abstract_zh: string | null
+  comment: string | null
+  raw_result_json: Record<string, unknown> | null
+  created_at: string
+  updated_at: string
+}
+
+export type DiscoveryPaperSummary = {
+  id: number
+  arxiv_id: string
+  primary_category: string | null
+  published_at: string | null
+  scraped_at: string
+  title_en: string
+  abstract_en: string
+  authors_json: string[]
+  pdf_url: string | null
+  abs_url: string | null
+  subjects_json: string[]
+  comments: string | null
+  source_run_date: string | null
+  title_zh: string | null
+  abstract_zh: string | null
+  worth_read: boolean | null
+  comment: string | null
+  has_translation: boolean
+  translation_task_count: number
+  collections: DiscoveryCollectionMembership[]
+  created_at: string
+  updated_at: string
+}
+
+export type DiscoveryPaperDetail = DiscoveryPaperSummary & {
+  reviews: DiscoveryPaperReview[]
+  tasks: TaskSummary[]
+  latest_task: TaskSummary | null
+}
+
+export type PaginatedDiscoveryPapers = {
+  items: DiscoveryPaperSummary[]
+  total: number
+  page: number
+  page_size: number
+}
+
+export type DiscoveryCollectionItem = {
+  id: number
+  collection_id: number
+  paper_id: number
+  added_by_user_id: string | null
+  note: string | null
+  translate_decision: TranslateDecision
+  created_at: string
+  updated_at: string
+  paper: DiscoveryPaperSummary
+}
+
+export type DiscoveryCollection = {
+  id: number
+  user_id: string
+  name: string
+  description: string | null
+  categories_json: string[]
+  prefer_keywords: string | null
+  avoid_keywords: string | null
+  translation_mode: CollectionTranslationMode
+  auto_translate_enabled: boolean
+  item_count: number
+  items: DiscoveryCollectionItem[]
+  created_at: string
+  updated_at: string
+}
+
+export type DiscoveryCollectionList = {
+  items: DiscoveryCollection[]
+  total: number
+}
+
+export type DiscoveryRun = {
+  id: string
+  trigger_source: string
+  requested_by_user_id: string | null
+  source_run_date: string
+  status: DiscoveryRunStatus
+  categories_json: string[]
+  total_papers: number
+  total_reviews: number
+  total_worth_read: number
+  error_message: string | null
+  summary_json: Record<string, unknown> | null
+  started_at: string | null
+  finished_at: string | null
+  created_at: string
+  updated_at: string
+}
+
+export type DiscoveryDailyDigestGroup = {
+  category: string
+  papers: DiscoveryPaperSummary[]
+}
+
+export type DiscoveryDailyDigest = {
+  run: DiscoveryRun | null
+  groups: DiscoveryDailyDigestGroup[]
+}
+
+export type DiscoveryPaperTaskResponse = {
+  task: TaskDetail
+  paper: DiscoveryPaperDetail
+}
+
+export type DiscoveryCollectionCreatePayload = {
+  name: string
+  description?: string
+  categories_json?: string[]
+  prefer_keywords?: string
+  avoid_keywords?: string
+  translation_mode?: CollectionTranslationMode
+  auto_translate_enabled?: boolean
+}
+
+export type DiscoveryCollectionUpdatePayload = {
+  name?: string
+  description?: string
+  categories_json?: string[]
+  prefer_keywords?: string
+  avoid_keywords?: string
+  translation_mode?: CollectionTranslationMode
+  auto_translate_enabled?: boolean
+}
+
+export type DiscoveryCollectionItemCreatePayload = {
+  paper_id: number
+  note?: string
+  translate_decision?: TranslateDecision
+}
+
+export type DiscoveryPaperTaskCreatePayload = {
+  collection_id?: number
+  task_name?: string
+  source_language?: string
+  target_language?: string
+  model_name?: string
+  env_profile?: string
+  output_name?: string
+  options?: Record<string, unknown>
+}
+
+export type AdminDiscoverySyncPayload = {
+  source_run_date?: string
+  force_refresh?: boolean
+  run_inline?: boolean
+}
+
+export type AdminDiscoveryRunList = {
+  items: DiscoveryRun[]
+  total: number
+  page: number
+  page_size: number
+}
+
 export type CreateArxivTaskPayload = {
   engine?: "latex"
   source_type: "arxiv"

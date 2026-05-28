@@ -8,6 +8,8 @@ import { cn } from "@/lib/utils"
 import { useAuth } from "@/lib/auth-context"
 
 const navigation = [
+  { to: "/discover", label: "Discover" },
+  { to: "/collections", label: "Collections" },
   { to: "/", label: "Tasks" },
   { to: "/tasks/new", label: "New Task" },
   { to: "/archives", label: "Archives" },
@@ -50,7 +52,7 @@ export function AppShell() {
                   LaTeXTrans Control Plane
                 </p>
                 <h1 className="font-heading text-2xl font-semibold tracking-tight">
-                  Translation tasks, archives, and runtime status
+                  Discovery, translation tasks, archives, and runtime status
                 </h1>
               </div>
               <div className="flex items-center gap-2 flex-wrap">
