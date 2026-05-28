@@ -704,8 +704,8 @@ export function DiscoverPage() {
         </CardContent>
       </Card>
 
-      <section className="flex ">
-        <Card>
+      <section className="flex flex-1 w-full">
+        <Card className={'w-full'}>
           <CardHeader>
             <CardTitle>All papers</CardTitle>
             <CardDescription>
@@ -714,7 +714,7 @@ export function DiscoverPage() {
                 : "Loading papers from the latest visible discovery data."}
             </CardDescription>
           </CardHeader>
-          <CardContent className="flex flex-col p-2  max-h-[900px] overflow-y-auto">
+          <CardContent className="flex flex-col p-2  max-h-[900px]  overflow-y-auto">
             {papersQuery.isLoading ? (
               <>
                 <Skeleton className="h-56 w-full" />

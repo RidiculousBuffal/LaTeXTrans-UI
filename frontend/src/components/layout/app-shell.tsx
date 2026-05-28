@@ -1,5 +1,12 @@
 import { MoonIcon, SunIcon, LogOutIcon, ShieldIcon } from "lucide-react"
-import { NavLink, Outlet, useNavigate, Navigate } from "react-router-dom"
+import {
+  NavLink,
+  Outlet,
+  useNavigate,
+  Navigate,
+  useLocation,
+  matchPath,
+} from "react-router-dom"
 import { useTheme } from "next-themes"
 
 import { Button } from "@/components/ui/button"
@@ -19,6 +26,7 @@ export function AppShell() {
   const { resolvedTheme, setTheme } = useTheme()
   const { user, logout, isLoading } = useAuth()
   const navigate = useNavigate()
+  const location = useLocation()
 
   if (isLoading) {
     return (
@@ -41,6 +49,20 @@ export function AppShell() {
     ...(user?.role === "admin" ? [{ to: "/admin", label: "Admin" }] : []),
   ]
 
+  function isNavItemActive(to: string) {
+    const { pathname } = location
+
+    if (to === "/tasks") {
+      return pathname === "/tasks" || matchPath("/tasks/:taskId", pathname) !== null
+    }
+
+    if (to === "/tasks/new") {
+      return pathname === "/tasks/new"
+    }
+
+    return false
+  }
+
   return (
     <div className="min-h-svh bg-[radial-gradient(circle_at_top_left,var(--color-primary)/0.08,transparent_28%),linear-gradient(180deg,var(--background),color-mix(in_oklab,var(--background)_92%,var(--color-muted)))] p-5">
       <div className="mx-auto flex min-h-svh max-w-7xl flex-col px-4 pb-4 sm:px-6 lg:px-8">
@@ -56,7 +78,9 @@ export function AppShell() {
                       className={({ isActive }) =>
                         cn(
                           "rounded-lg px-3 py-2 text-sm font-medium transition-colors",
-                          isActive
+                          (item.to.startsWith("/tasks")
+                            ? isNavItemActive(item.to)
+                            : isActive)
                             ? "bg-primary text-primary-foreground"
                             : "text-muted-foreground hover:bg-muted hover:text-foreground"
                         )
