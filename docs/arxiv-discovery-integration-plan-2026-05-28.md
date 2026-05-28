@@ -8,6 +8,11 @@
 - `docs/backend-api-reference-2026-05-26.md`
 - `docs/productization-auth-sharing-cache-plan-2026-05-27.md`
 
+外部源码来源：
+
+- 本次要并入的 `ArxivArchive` 本地项目路径为 `/Users/hpcow/codes/ArxivArchive`
+- 后续 agent 如果需要迁入 discovery 相关代码，应从这个目录中选择性复制 `crawl`、`judge`、`analyze` 相关模块，而不是凭空重写或从别处寻找同名项目
+
 ## 1. 背景判断
 
 当前 `latex_trans_prod` 已经完成了原定主线能力：
@@ -41,10 +46,10 @@
    - 用 AI 生成中文标题、中文摘要、是否值得阅读、简评。
    - 用户先判断是否值得进入个人收藏夹，而不是系统直接翻译。
 
-2. 论文订阅与日报
-   - 用户可订阅分类、关键词、研究偏好。
-   - 系统每日生成“值得阅读论文清单”。
-   - 可在站内查看，后续再扩展邮件/飞书/企业微信推送。
+2. 收藏夹驱动的发现配置
+   - 用户在收藏夹内配置关注分类、关键词偏好和不偏好方向。
+   - 系统按所有收藏夹的分类并集执行每日抓取与粗筛。
+   - 发现流先以站内列表和收藏夹视角为主，不单独拆出订阅系统。
 
 3. 论文到翻译任务的一键闭环
    - 论文先进入用户自己的收藏夹。
@@ -147,6 +152,7 @@
 集成方式：
 
 - 将 `crawl`、`judge`、`analyze` 相关核心模块迁入 `backend/app` 或 `backend/src` 体系。
+- 迁入源码的本地来源固定为 `/Users/hpcow/codes/ArxivArchive`。
 - 由当前 backend 统一管理配置、日志、Redis worker、数据库落库和前端查询接口。
 - 不再依赖“外部项目先产出 JSON 再导入”的双系统边界。
 
@@ -295,33 +301,33 @@
 
 ### `CollectionsPage`
 
-MVP 阶段它比订阅页更重要。
+MVP 阶段它就是 discovery 偏好和后续翻译策略的核心载体。
 
 用途：
 
 - 管理当前用户的多个收藏夹
 - 为每个收藏夹设置用途和描述
+- 为每个收藏夹设置关注的 arXiv 分类
+- 为每个收藏夹设置 `prefer / not prefer` 关键词
 - 为每个收藏夹设置翻译策略
 
 收藏夹建议字段：
 
 - 收藏夹名称
 - 收藏夹描述
+- 关注分类
+- `prefer_keywords`
+- `avoid_keywords`
 - 文章数量
 - 默认翻译策略：
   - `manual`
   - `auto`
-- 自动翻译触发条件摘要
+- 当前偏好摘要
 
-### `SubscriptionsPage`
+说明：
 
-可以保留，但优先级低于 `CollectionsPage`。
-
-用途：
-
-- 配置关注分类
-- 配置关键词
-- 配置“偏好 / 不偏好”方向
+- 当前方案不再单独引入 `SubscriptionsPage` 或 `arxiv_collection_subscriptions`。
+- discovery 偏好直接挂在 `arxiv_collections` 上，由每个收藏夹同时承载“发现入口”和“后续翻译策略”。
 
 ## 7.2 首页/任务页增强
 
@@ -367,46 +373,32 @@ MVP 阶段它比订阅页更重要。
 
 ### `arxiv_paper_reviews`
 
-表示 AI 粗筛/分析结果，和论文主表分离，便于重跑模型。
+表示 AI 粗筛/分析结果，和论文主表分离，并且按 `collection` 维度存储，便于同一篇论文针对不同收藏夹生成不同判断结果。
 
 建议字段：
 
 - `id`
 - `paper_id`
+- `collection_id`
 - `review_type`
 - `model_name`
 - `worth_read`
 - `title_zh`
 - `abstract_zh`
 - `comment`
-- `score`
 - `raw_result_json`
 - `created_at`
 
 说明：
 
 - `review_type` 可以先只支持 `daily_judge`。
+- 同一篇论文可以针对不同 `collection` 存在多条 review。
+- `title_zh` / `abstract_zh` / `worth_read` / `comment` 在一期先都按 `collection` 视角落库，避免把个性化判断误建成全局唯一结果。
 - 后续若做“精读总结”“周报摘要”，可以继续复用。
-
-### `arxiv_collection_subscriptions`
-
-表示用户订阅配置。
-
-建议字段：
-
-- `id`
-- `user_id`
-- `categories_json`
-- `prefer_keywords`
-- `avoid_keywords`
-- `only_worth_read`
-- `is_active`
-- `created_at`
-- `updated_at`
 
 ### `arxiv_collections`
 
-表示用户自定义收藏夹。
+表示用户自定义收藏夹，同时也是 discovery 偏好配置的承载对象。
 
 建议字段：
 
@@ -414,6 +406,9 @@ MVP 阶段它比订阅页更重要。
 - `user_id`
 - `name`
 - `description`
+- `categories_json`
+- `prefer_keywords`
+- `avoid_keywords`
 - `translation_mode`
 - `auto_translate_enabled`
 - `created_at`
@@ -422,10 +417,12 @@ MVP 阶段它比订阅页更重要。
 说明：
 
 - 一个用户可以拥有多个收藏夹。
+- `categories_json` 用于定义该收藏夹关心的 arXiv 分类。
+- `prefer_keywords` / `avoid_keywords` 用于定义该收藏夹视角下的 AI 判断偏好。
 - `translation_mode` 建议先支持：
   - `manual`
   - `auto`
-- `auto_translate_enabled` 可以和 `translation_mode` 合并，但拆开更便于后续扩展复杂条件。
+- `auto_translate_enabled` 和 `translation_mode` 可以先保留，但一期后端只保存策略，不实际触发自动翻译任务。
 
 ### `arxiv_collection_items`
 
@@ -477,7 +474,6 @@ MVP 阶段它比订阅页更重要。
 - `backend/app/services/arxiv_pipeline_service.py`
 - `backend/app/services/arxiv_persistence_service.py`
 - `backend/app/services/arxiv_collection_service.py`
-- `backend/app/services/arxiv_subscription_service.py`
 - `backend/app/repositories/arxiv_repository.py`
 - `backend/app/api/routes/discovery.py`
 
@@ -493,10 +489,7 @@ MVP 阶段它比订阅页更重要。
   - 负责将 discovery pipeline 结果落库，并维护论文与任务关联。
 
 - `arxiv_collection_service`
-  - 负责收藏夹、收藏动作、翻译策略和自动翻译触发逻辑。
-
-- `arxiv_subscription_service`
-  - 负责用户订阅配置。
+  - 负责收藏夹、收藏动作、分类偏好、关键词偏好与翻译策略配置。
 
 ## 8.3 新增接口建议
 
@@ -513,13 +506,6 @@ MVP 阶段它比订阅页更重要。
 - `PATCH /api/discovery/collections/{collection_id}`
 - `POST /api/discovery/collections/{collection_id}/items`
 - `DELETE /api/discovery/collections/{collection_id}/items/{paper_id}`
-- `POST /api/discovery/collections/{collection_id}/translate`
-- `POST /api/discovery/collections/{collection_id}/items/{paper_id}/translate`
-
-### 订阅相关
-
-- `GET /api/discovery/subscription`
-- `PUT /api/discovery/subscription`
 
 ### 管理/同步相关
 
@@ -534,7 +520,7 @@ MVP 阶段它比订阅页更重要。
 
 - 用户先把论文加入某个收藏夹。
 - 若收藏夹是 `manual` 模式，则由用户显式点击翻译。
-- 若收藏夹是 `auto` 模式，则由后台 worker 异步创建翻译任务。
+- 若收藏夹是 `auto` 模式，则先只记录策略，不在一期直接触发后台翻译任务。
 - 真正创建任务时，后端仍然根据 `paper_id` 取出 `arxiv_id`。
 - 内部复用现有 `TaskService.create_task(...)`
 - payload 仍然只传：
@@ -578,12 +564,18 @@ MVP 阶段它比订阅页更重要。
 - `subjects_primary`
 - `subjects_other`
 - `comments`
+- `matched_collection_ids[]`
+- `collection_reviews[]`
+
+每个 `collection_reviews[]` 建议至少包含：
+
+- `collection_id`
 - `worth_read`
 - `chinese_name`
 - `chinese_abstract`
 - `comment`
 
-这基本已经覆盖了 `ArxivArchive` 当前模型里的关键字段，也适合作为 pipeline service 和 persistence service 之间的内部 contract。
+这比“每篇论文只存一份全局 worth_read/comment”的契约更符合当前方案，因为不同收藏夹可以配置不同分类和 `prefer / not prefer` 关键词。
 
 ## 9.3 定时执行方式
 
@@ -625,16 +617,19 @@ MVP 阶段建议：
 建议的第一条周期任务：
 
 - 每天按固定时区运行一次 `sync_daily_arxiv_digest`
-- 参数由配置决定：
-  - categories
-  - prefer_keywords
-  - avoid_keywords
-  - only_worth_read
+- 抓取范围不是来自环境变量，而是来自当前所有 `arxiv_collections.categories_json` 的分类并集
+- 对命中的 `collection` 分别带入各自的 `prefer_keywords` / `avoid_keywords` 执行 judge / analyze
 
 建议的第二类后台任务：
 
 - `process_auto_translate_collections`
-- 负责扫描启用了自动翻译的收藏夹，把新加入且尚未翻译的论文转换成翻译任务
+- 保留为后续阶段扩展点，一期先不实现
+
+配置原则补充：
+
+- discovery 运行时配置尽量收紧，一期只需要 `REDIS_URL` 和必要的时区开关。
+- `judge` / `analyze` 默认复用现有 `OPENAI_MODEL`，不额外拆分新的 discovery model 环境变量。
+- `MAX_FIGURE_NUM` 一期直接固定为 `20`，先不要暴露为环境变量。
 
 配置原则：
 
@@ -649,9 +644,10 @@ MVP 阶段建议：
 目标：
 
 - 把 `ArxivArchive` 核心能力并入当前 backend
-- 能在站内看到每日论文列表
+- 先把后端 discovery 主链路做通
+- 能按收藏夹视角生成个性化论文判断结果
 - 能把论文加入用户自定义收藏夹
-- 能在收藏夹中区分自动翻译和手动翻译
+- 能在收藏夹中配置分类、`prefer / not prefer` 与翻译策略
 
 范围：
 
@@ -659,34 +655,36 @@ MVP 阶段建议：
 - 新增 `arxiv_collections` / `arxiv_collection_items`
 - 新增 `Huey + Redis` discovery 同步任务
 - 新增 backend 内部 discovery pipeline 服务边界
-- 新增 `DiscoverPage`
-- 新增 `CollectionsPage`
-- 新增 `Pipeline` 可视化卡片，使用 `@xyflow/react`
-- 新增 `Add to Collection` 交互
-- 任务详情页增加“来自哪篇论文”的跳转入口
+- 同步任务按所有 `collection` 的分类并集抓取
+- review 结果按 `collection` 维度落库
+- 新增 discovery 查询 API、收藏夹 API、管理员手动同步入口
 
 不做：
 
-- 不做用户订阅
+- 不做独立订阅系统
 - 不做消息推送
 - 不做站外推送
+- 不做自动翻译任务触发
 - 不做复杂自动翻译规则引擎
+- 不在一期同时要求前端页面全部完成
 
 这是最推荐先落地的一期。
 
-## Phase 2：订阅与团队推荐
+## Phase 2：前端发现页与团队推荐
 
 目标：
 
-- 从“论文列表”升级到“个性化入口”
+- 从“后端能力可用”升级到“站内发现入口真正可用”
 
 范围：
 
-- 用户订阅配置
+- `DiscoverPage`
+- `CollectionsPage`
+- `Pipeline` 可视化卡片
 - 首页推荐卡片
 - `worth_read` 过滤
 - 团队推荐 / 收藏 / 稍后阅读
-- 收藏夹自动翻译规则增强
+- 任务详情页增加“来自哪篇论文”的跳转入口
 
 ## Phase 3：主动内容生产
 
@@ -697,6 +695,7 @@ MVP 阶段建议：
 范围：
 
 - 自动翻译收藏夹中的选中论文
+- 收藏夹自动翻译规则增强
 - 每周周报
 - 精读包
 - 热门论文共享与复用统计
@@ -721,7 +720,7 @@ MVP 阶段建议：
 2. 再做页面
 3. 最后再考虑导出日报 markdown / HTML
 
-### 11.4 worth_read 不能变成硬过滤黑箱
+### 11.4 worth_read 不能被误建成单一全局结论
 
 建议前端支持三种视图：
 
@@ -729,7 +728,7 @@ MVP 阶段建议：
 - 值得阅读
 - 已翻译 / 有历史结果
 
-否则模型判断会过强地主导用户视野，容易漏掉值得看的边缘论文。
+另外，当前方案下 `worth_read` 是和 `collection` 绑定的判断结果，不应该在数据层被默认设计成“同一篇论文全局只有一个 worth_read 值”，否则会错误覆盖不同收藏夹的研究偏好。
 
 ### 11.5 不要把发现流默认等同于自动翻译
 

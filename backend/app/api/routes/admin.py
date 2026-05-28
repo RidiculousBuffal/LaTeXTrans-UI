@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import date
+
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
@@ -8,6 +10,8 @@ from backend.app.models.cache import TranslationCacheEntry
 from backend.app.models.quota import UserQuotaAccount
 from backend.app.models.user import User, UserRole
 from backend.app.schemas.admin import (
+    AdminDiscoveryRunListResponse,
+    AdminDiscoverySyncRequest,
     AdminChangePasswordRequest,
     AdminCreateUserRequest,
     CacheEntryItem,
@@ -17,7 +21,9 @@ from backend.app.schemas.admin import (
     UserAdminItem,
     UserListResponse,
 )
+from backend.app.schemas.discovery import DiscoveryRunResponse
 from backend.app.services.auth_service import hash_password, require_admin
+from backend.app.services.arxiv_pipeline_service import ArxivPipelineService
 from backend.app.services.cache_service import CacheService
 from backend.app.services.quota_service import QuotaService
 
@@ -168,3 +174,39 @@ def invalidate_cache(
     cache_service = CacheService(db)
     cache_service.invalidate(entry)
     db.commit()
+
+
+@router.post("/discovery/sync", response_model=DiscoveryRunResponse, status_code=status.HTTP_202_ACCEPTED)
+def sync_discovery(
+    payload: AdminDiscoverySyncRequest,
+    db: Session = Depends(get_db),
+    admin: User = Depends(require_admin),
+) -> DiscoveryRunResponse:
+    pipeline = ArxivPipelineService(db)
+    run_date = date.fromisoformat(payload.source_run_date) if payload.source_run_date else date.today()
+    run = pipeline.create_run(
+        current_user=admin,
+        trigger_source="admin_manual",
+        source_run_date=run_date,
+        force_refresh=payload.force_refresh,
+    )
+    if payload.run_inline:
+        run = pipeline.execute_run(run.id)
+    return DiscoveryRunResponse.model_validate(run)
+
+
+@router.get("/discovery/runs", response_model=AdminDiscoveryRunListResponse)
+def list_discovery_runs(
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=20, ge=1, le=100),
+    db: Session = Depends(get_db),
+    _admin: User = Depends(require_admin),
+) -> AdminDiscoveryRunListResponse:
+    repository = ArxivPipelineService(db).repository
+    runs, total = repository.list_runs(page=page, page_size=page_size)
+    return AdminDiscoveryRunListResponse(
+        items=[DiscoveryRunResponse.model_validate(run) for run in runs],
+        total=total,
+        page=page,
+        page_size=page_size,
+    )

@@ -76,6 +76,13 @@ class Settings(BaseSettings):
     cache_version: int = Field(default=1, alias="CACHE_VERSION")
     cache_build_stale_minutes: int = Field(default=60, alias="CACHE_BUILD_STALE_MINUTES")
 
+    # Discovery / Huey
+    redis_url: str = Field(default="redis://127.0.0.1:6379/1", alias="REDIS_URL")
+    discovery_timezone: str = Field(default="Asia/Shanghai", alias="DISCOVERY_TIMEZONE")
+    discovery_schedule_hour: int = Field(default=9, alias="DISCOVERY_SCHEDULE_HOUR")
+    discovery_schedule_minute: int = Field(default=0, alias="DISCOVERY_SCHEDULE_MINUTE")
+    discovery_huey_enabled: bool = Field(default=False, alias="DISCOVERY_HUEY_ENABLED")
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
@@ -115,6 +122,10 @@ class Settings(BaseSettings):
             raise ValueError("MAX_UPLOAD_BYTES must be greater than 0.")
         if self.artifact_download_url_expire_seconds <= 0:
             raise ValueError("ARTIFACT_DOWNLOAD_URL_EXPIRE_SECONDS must be greater than 0.")
+        if not (0 <= self.discovery_schedule_hour <= 23):
+            raise ValueError("DISCOVERY_SCHEDULE_HOUR must be between 0 and 23.")
+        if not (0 <= self.discovery_schedule_minute <= 59):
+            raise ValueError("DISCOVERY_SCHEDULE_MINUTE must be between 0 and 59.")
 
         if self.is_production:
             if self.jwt_secret_key in insecure_jwt_values or len(self.jwt_secret_key) < 32:

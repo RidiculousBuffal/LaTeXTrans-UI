@@ -8,8 +8,30 @@ from backend.app.models.task import (
     TaskStatus,
     TranslationTask,
 )
+from backend.app.models.discovery import (
+    ArxivCollection,
+    ArxivCollectionItem,
+    ArxivCollectionTranslationMode,
+    ArxivDiscoveryRun,
+    ArxivDiscoveryRunStatus,
+    ArxivPaper,
+    ArxivPaperReview,
+    ArxivPaperReviewType,
+    ArxivPaperTaskLink,
+    ArxivTranslateDecision,
+)
 
 __all__ = [
+    "ArxivCollection",
+    "ArxivCollectionItem",
+    "ArxivCollectionTranslationMode",
+    "ArxivDiscoveryRun",
+    "ArxivDiscoveryRunStatus",
+    "ArxivPaper",
+    "ArxivPaperReview",
+    "ArxivPaperReviewType",
+    "ArxivPaperTaskLink",
+    "ArxivTranslateDecision",
     "TaskArtifact",
     "TaskArtifactType",
     "TaskConfig",

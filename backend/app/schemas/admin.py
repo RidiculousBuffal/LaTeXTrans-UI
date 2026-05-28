@@ -1,5 +1,7 @@
 from pydantic import BaseModel, field_validator
 
+from backend.app.schemas.discovery import DiscoveryRunResponse
+
 
 class QuotaAdjustRequest(BaseModel):
     delta: int
@@ -71,3 +73,16 @@ class CacheEntryItem(BaseModel):
 class CacheListResponse(BaseModel):
     items: list[CacheEntryItem]
     total: int
+
+
+class AdminDiscoverySyncRequest(BaseModel):
+    source_run_date: str | None = None
+    force_refresh: bool = False
+    run_inline: bool = False
+
+
+class AdminDiscoveryRunListResponse(BaseModel):
+    items: list[DiscoveryRunResponse]
+    total: int
+    page: int
+    page_size: int

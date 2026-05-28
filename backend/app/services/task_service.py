@@ -41,6 +41,7 @@ from backend.app.schemas.task import (
     TaskSummaryResponse,
 )
 from backend.app.services.access_service import AccessService
+from backend.app.services.arxiv_persistence_service import ArxivPersistenceService
 from backend.app.services.archive_service import ArchiveService
 from backend.app.services.babeldoc_service import BabelDocService
 from backend.app.services.cache_service import CacheService
@@ -103,6 +104,8 @@ class TaskService:
             task.finished_at = datetime.utcnow()
             cache_service.record_hit(cache_entry)
             self.repository.commit()
+            ArxivPersistenceService(self.db).link_task_to_paper_by_arxiv_id(task=task, created_by_user_id=owner.id)
+            self.repository.commit()
             return self.get_task_detail(task.id, current_user=owner)
 
         # Quota check
@@ -137,6 +140,8 @@ class TaskService:
                 reason_ref_id="pending", user_id=owner.id
             ).update({"reason_ref_id": task.id})
 
+        self.repository.commit()
+        ArxivPersistenceService(self.db).link_task_to_paper_by_arxiv_id(task=task, created_by_user_id=owner.id)
         self.repository.commit()
 
         from backend.app.workers.translation_runner import submit_task
