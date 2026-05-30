@@ -68,6 +68,20 @@ class DiscoveryCollectionMembershipResponse(APIModel):
     updated_at: datetime
 
 
+class DiscoveryPaperEnrichmentResponse(APIModel):
+    """全局 paper enrichment 响应，与 collection 无关。"""
+
+    id: int
+    enrichment_type: str
+    model_name: str
+    title_zh: str | None
+    abstract_zh: str | None
+    summary_zh: str | None
+    keywords_json: list[str] | None
+    created_at: datetime
+    updated_at: datetime
+
+
 class DiscoveryPaperReviewResponse(APIModel):
     id: int
     collection_id: int
@@ -75,8 +89,6 @@ class DiscoveryPaperReviewResponse(APIModel):
     review_type: ArxivPaperReviewType
     model_name: str
     worth_read: bool
-    title_zh: str | None
-    abstract_zh: str | None
     comment: str | None
     raw_result_json: dict[str, Any] | None
     created_at: datetime
@@ -97,8 +109,10 @@ class DiscoveryPaperSummaryResponse(APIModel):
     subjects_json: list[str]
     comments: str | None
     source_run_date: date | None
+    # Global enrichment fields (来自 arxiv_paper_enrichments)
     title_zh: str | None = None
     abstract_zh: str | None = None
+    # Collection judgment fields (来自 selected review)
     worth_read: bool | None = None
     comment: str | None = None
     has_translation: bool = False
@@ -109,6 +123,7 @@ class DiscoveryPaperSummaryResponse(APIModel):
 
 
 class DiscoveryPaperDetailResponse(DiscoveryPaperSummaryResponse):
+    enrichment: DiscoveryPaperEnrichmentResponse | None = None
     reviews: list[DiscoveryPaperReviewResponse] = Field(default_factory=list)
     tasks: list[TaskSummaryResponse] = Field(default_factory=list)
     latest_task: TaskSummaryResponse | None = None

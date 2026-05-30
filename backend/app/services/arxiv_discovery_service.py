@@ -6,7 +6,7 @@ from datetime import date
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
-from backend.app.models.discovery import ArxivCollection, ArxivCollectionItem, ArxivPaper, ArxivPaperReview
+from backend.app.models.discovery import ArxivCollection, ArxivCollectionItem, ArxivPaper, ArxivPaperEnrichment, ArxivPaperReview
 from backend.app.models.discovery import ArxivTranslateDecision
 from backend.app.models.task import TaskEngine, TaskSourceType
 from backend.app.models.user import User
@@ -19,6 +19,7 @@ from backend.app.schemas.discovery import (
     DiscoveryDailyDigestGroupResponse,
     DiscoveryDailyDigestResponse,
     DiscoveryPaperDetailResponse,
+    DiscoveryPaperEnrichmentResponse,
     DiscoveryPaperListResponse,
     DiscoveryPaperReviewResponse,
     DiscoveryPaperSummaryResponse,
@@ -78,9 +79,12 @@ class ArxivDiscoveryService:
             for review in paper.reviews
             if review.collection.user_id == current_user.id
         ]
+        active_enrichment = self._pick_enrichment(paper.enrichments)
+        enrichment_response = self._build_enrichment_response(active_enrichment) if active_enrichment else None
         latest_task = tasks[0] if tasks else None
         return DiscoveryPaperDetailResponse(
             **summary.model_dump(),
+            enrichment=enrichment_response,
             reviews=reviews,
             tasks=tasks,
             latest_task=latest_task,
@@ -237,6 +241,12 @@ class ArxivDiscoveryService:
         ]
         selected_review = self._pick_review(reviews, preferred_collection_id=preferred_collection_id)
         tasks = self._visible_task_summaries(paper, current_user=current_user)
+
+        # Phase 2: title_zh/abstract_zh 只从全局 enrichment 读，review 不再携带这两个字段
+        active_enrichment = self._pick_enrichment(paper.enrichments)
+        title_zh = active_enrichment.title_zh if active_enrichment else None
+        abstract_zh = active_enrichment.abstract_zh if active_enrichment else None
+
         return DiscoveryPaperSummaryResponse(
             id=paper.id,
             arxiv_id=paper.arxiv_id,
@@ -251,8 +261,8 @@ class ArxivDiscoveryService:
             subjects_json=paper.subjects_json or [],
             comments=paper.comments,
             source_run_date=paper.source_run_date,
-            title_zh=selected_review.title_zh if selected_review else None,
-            abstract_zh=selected_review.abstract_zh if selected_review else None,
+            title_zh=title_zh,
+            abstract_zh=abstract_zh,
             worth_read=selected_review.worth_read if selected_review else None,
             comment=selected_review.comment if selected_review else None,
             has_translation=bool(tasks),
@@ -281,6 +291,19 @@ class ArxivDiscoveryService:
         reviews.sort(key=lambda review: review.updated_at, reverse=True)
         return reviews[0]
 
+    def _pick_enrichment(
+        self,
+        enrichments: list[ArxivPaperEnrichment],
+        *,
+        enrichment_type: str = "global_summary",
+    ) -> ArxivPaperEnrichment | None:
+        """返回指定类型的最新 enrichment，优先取 global_summary。"""
+        typed = [e for e in enrichments if e.enrichment_type == enrichment_type]
+        if not typed:
+            return enrichments[0] if enrichments else None
+        typed.sort(key=lambda e: e.updated_at, reverse=True)
+        return typed[0]
+
     def _build_membership_response(self, item: ArxivCollectionItem) -> DiscoveryCollectionMembershipResponse:
         return DiscoveryCollectionMembershipResponse(
             item_id=item.id,
@@ -300,10 +323,21 @@ class ArxivDiscoveryService:
             review_type=review.review_type,
             model_name=review.model_name,
             worth_read=review.worth_read,
-            title_zh=review.title_zh,
-            abstract_zh=review.abstract_zh,
             comment=review.comment,
             raw_result_json=review.raw_result_json,
             created_at=review.created_at,
             updated_at=review.updated_at,
+        )
+
+    def _build_enrichment_response(self, enrichment: ArxivPaperEnrichment) -> DiscoveryPaperEnrichmentResponse:
+        return DiscoveryPaperEnrichmentResponse(
+            id=enrichment.id,
+            enrichment_type=enrichment.enrichment_type,
+            model_name=enrichment.model_name,
+            title_zh=enrichment.title_zh,
+            abstract_zh=enrichment.abstract_zh,
+            summary_zh=enrichment.summary_zh,
+            keywords_json=enrichment.keywords_json,
+            created_at=enrichment.created_at,
+            updated_at=enrichment.updated_at,
         )

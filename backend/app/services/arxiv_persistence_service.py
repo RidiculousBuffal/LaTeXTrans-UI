@@ -10,6 +10,7 @@ from backend.app.models.discovery import (
     ArxivDiscoveryRun,
     ArxivDiscoveryRunStatus,
     ArxivPaper,
+    ArxivPaperEnrichment,
     ArxivPaperReview,
     ArxivPaperReviewType,
     ArxivPaperTaskLink,
@@ -76,8 +77,6 @@ class ArxivPersistenceService:
         collection: ArxivCollection,
         model_name: str,
         worth_read: bool,
-        title_zh: str | None,
-        abstract_zh: str | None,
         comment: str | None,
         raw_result_json: dict[str, Any] | None,
     ) -> ArxivPaperReview:
@@ -89,8 +88,6 @@ class ArxivPersistenceService:
                 review_type=ArxivPaperReviewType.DAILY_JUDGE,
                 model_name=model_name,
                 worth_read=worth_read,
-                title_zh=title_zh,
-                abstract_zh=abstract_zh,
                 comment=comment,
                 raw_result_json=raw_result_json,
             )
@@ -100,12 +97,46 @@ class ArxivPersistenceService:
 
         review.model_name = model_name
         review.worth_read = worth_read
-        review.title_zh = title_zh
-        review.abstract_zh = abstract_zh
         review.comment = comment
         review.raw_result_json = raw_result_json
         self.db.flush()
         return review
+
+    def upsert_enrichment(
+        self,
+        *,
+        paper: ArxivPaper,
+        model_name: str,
+        title_zh: str | None,
+        abstract_zh: str | None,
+        summary_zh: str | None = None,
+        keywords_json: list[str] | None = None,
+        raw_result_json: dict[str, Any] | None = None,
+        enrichment_type: str = "global_summary",
+    ) -> ArxivPaperEnrichment:
+        enrichment = self.repository.get_enrichment(paper_id=paper.id, enrichment_type=enrichment_type)
+        if enrichment is None:
+            enrichment = ArxivPaperEnrichment(
+                paper_id=paper.id,
+                enrichment_type=enrichment_type,
+                model_name=model_name,
+                title_zh=title_zh,
+                abstract_zh=abstract_zh,
+                summary_zh=summary_zh,
+                keywords_json=keywords_json,
+                raw_result_json=raw_result_json,
+            )
+            self.repository.add_enrichment(enrichment)
+            return enrichment
+
+        enrichment.model_name = model_name
+        enrichment.title_zh = title_zh
+        enrichment.abstract_zh = abstract_zh
+        enrichment.summary_zh = summary_zh
+        enrichment.keywords_json = keywords_json
+        enrichment.raw_result_json = raw_result_json
+        self.db.flush()
+        return enrichment
 
     def ensure_task_link(
         self,

@@ -71,6 +71,11 @@ class ArxivPaper(Base):
         cascade="all, delete-orphan",
         order_by="ArxivPaperReview.created_at.desc()",
     )
+    enrichments: Mapped[list[ArxivPaperEnrichment]] = relationship(
+        back_populates="paper",
+        cascade="all, delete-orphan",
+        order_by="ArxivPaperEnrichment.created_at.desc()",
+    )
     collection_items: Mapped[list[ArxivCollectionItem]] = relationship(
         back_populates="paper",
         cascade="all, delete-orphan",
@@ -147,8 +152,6 @@ class ArxivPaperReview(Base):
     )
     model_name: Mapped[str] = mapped_column(String(128), nullable=False)
     worth_read: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
-    title_zh: Mapped[str | None] = mapped_column(Text, nullable=True)
-    abstract_zh: Mapped[str | None] = mapped_column(Text, nullable=True)
     comment: Mapped[str | None] = mapped_column(Text, nullable=True)
     raw_result_json: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=func.now())
@@ -210,6 +213,40 @@ class ArxivPaperTaskLink(Base):
 
     paper: Mapped[ArxivPaper] = relationship(back_populates="task_links")
     task: Mapped["TranslationTask"] = relationship()
+
+
+class ArxivPaperEnrichment(Base):
+    """全局 paper enrichment，存储与 collection 无关的 AI 加工结果（中文标题、中文摘要等）。"""
+
+    __tablename__ = "arxiv_paper_enrichments"
+    __table_args__ = (
+        Index("ix_arxiv_paper_enrichments_paper_id", "paper_id"),
+        Index(
+            "ix_arxiv_paper_enrichments_unique_scope",
+            "paper_id",
+            "enrichment_type",
+            unique=True,
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    paper_id: Mapped[int] = mapped_column(ForeignKey("arxiv_papers.id", ondelete="CASCADE"), nullable=False)
+    enrichment_type: Mapped[str] = mapped_column(String(64), nullable=False, default="global_summary")
+    model_name: Mapped[str] = mapped_column(String(128), nullable=False)
+    title_zh: Mapped[str | None] = mapped_column(Text, nullable=True)
+    abstract_zh: Mapped[str | None] = mapped_column(Text, nullable=True)
+    summary_zh: Mapped[str | None] = mapped_column(Text, nullable=True)
+    keywords_json: Mapped[list[str] | None] = mapped_column(JSON, nullable=True)
+    raw_result_json: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=func.now(),
+        onupdate=func.now(),
+    )
+
+    paper: Mapped[ArxivPaper] = relationship(back_populates="enrichments")
 
 
 class ArxivDiscoveryRun(Base):

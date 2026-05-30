@@ -256,7 +256,7 @@ export function PaperDetailPage() {
                 <CardHeader>
                   <CardTitle>Review history</CardTitle>
                   <CardDescription>
-                    Reviews are scoped to collections, so this list shows where the AI opinion came from.
+                    Reviews are scoped to collections — worth_read and comment come from here.
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
@@ -274,12 +274,6 @@ export function PaperDetailPage() {
                             {review.worth_read ? "Worth reading" : "Not worth reading"}
                           </Badge>
                         </div>
-                        {review.title_zh ? (
-                          <p className="mt-3 text-sm font-medium">{review.title_zh}</p>
-                        ) : null}
-                        {review.abstract_zh ? (
-                          <p className="mt-2 text-sm text-muted-foreground">{review.abstract_zh}</p>
-                        ) : null}
                         {review.comment ? (
                           <p className="mt-3 rounded-lg bg-muted/30 p-3 text-sm">{review.comment}</p>
                         ) : null}
@@ -417,9 +411,15 @@ export function PaperDetailPage() {
                   {[
                     { step: "crawl", detail: `Paper scraped at ${formatDateTime(paper.scraped_at)}` },
                     {
+                      step: "enrich",
+                      detail: paper.enrichment
+                        ? `Global enrichment ready · ${paper.enrichment.model_name}`
+                        : "No global enrichment yet",
+                    },
+                    {
                       step: "judge",
                       detail: paper.reviews.length
-                        ? `${paper.reviews.length} review(s) visible in your collections`
+                        ? `${paper.reviews.length} collection-scoped review(s) visible`
                         : "No visible review yet",
                     },
                     {

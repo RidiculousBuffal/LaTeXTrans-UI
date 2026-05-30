@@ -196,6 +196,18 @@ export type DiscoveryCollectionMembership = {
   updated_at: string
 }
 
+export type DiscoveryPaperEnrichment = {
+  id: number
+  enrichment_type: string
+  model_name: string
+  title_zh: string | null
+  abstract_zh: string | null
+  summary_zh: string | null
+  keywords_json: string[] | null
+  created_at: string
+  updated_at: string
+}
+
 export type DiscoveryPaperReview = {
   id: number
   collection_id: number
@@ -203,8 +215,6 @@ export type DiscoveryPaperReview = {
   review_type: "daily_judge"
   model_name: string
   worth_read: boolean
-  title_zh: string | null
-  abstract_zh: string | null
   comment: string | null
   raw_result_json: Record<string, unknown> | null
   created_at: string
@@ -237,6 +247,7 @@ export type DiscoveryPaperSummary = {
 }
 
 export type DiscoveryPaperDetail = DiscoveryPaperSummary & {
+  enrichment: DiscoveryPaperEnrichment | null
   reviews: DiscoveryPaperReview[]
   tasks: TaskSummary[]
   latest_task: TaskSummary | null

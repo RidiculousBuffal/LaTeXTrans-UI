@@ -18,6 +18,7 @@ from backend.app.models.discovery import (
     ArxivDiscoveryRun,
     ArxivDiscoveryRunStatus,
     ArxivPaper,
+    ArxivPaperEnrichment,
     ArxivPaperReview,
     ArxivPaperReviewType,
 )
@@ -108,6 +109,17 @@ def test_list_papers_and_collections_for_current_user(client: TestClient, db_ses
     db_session.add(paper)
     db_session.flush()
 
+    # 全局 enrichment（title_zh / abstract_zh 归属于此）
+    db_session.add(
+        ArxivPaperEnrichment(
+            paper_id=paper.id,
+            enrichment_type="global_summary",
+            model_name="gpt-4.1-mini",
+            title_zh="一篇有用的论文",
+            abstract_zh="这是中文摘要。",
+        )
+    )
+
     collection = ArxivCollection(
         user_id=user.id,
         name="Daily AI",
@@ -126,10 +138,8 @@ def test_list_papers_and_collections_for_current_user(client: TestClient, db_ses
             review_type=ArxivPaperReviewType.DAILY_JUDGE,
             model_name="gpt-4.1-mini",
             worth_read=True,
-            title_zh="一篇有用的论文",
-            abstract_zh="这是中文摘要。",
             comment="值得跟进。",
-            raw_result_json={"judge": {"worth_read": True}},
+            raw_result_json={"judgment": {"worth_read": True}},
         )
     )
     db_session.add(

@@ -11,6 +11,7 @@ from backend.app.models.discovery import (
     ArxivDiscoveryRunStatus,
     ArxivDiscoveryRun,
     ArxivPaper,
+    ArxivPaperEnrichment,
     ArxivPaperReview,
     ArxivPaperTaskLink,
 )
@@ -42,17 +43,25 @@ class ArxivRepository:
             filters.append(ArxivPaper.source_run_date == source_run_date)
         if keyword:
             keyword_pattern = f"%{keyword}%"
-            review_exists = (
+            # title_zh / abstract_zh 已迁移到 enrichment 表
+            enrichment_exists = (
+                select(ArxivPaperEnrichment.id)
+                .where(
+                    ArxivPaperEnrichment.paper_id == ArxivPaper.id,
+                    or_(
+                        ArxivPaperEnrichment.title_zh.ilike(keyword_pattern),
+                        ArxivPaperEnrichment.abstract_zh.ilike(keyword_pattern),
+                    ),
+                )
+                .exists()
+            )
+            review_comment_exists = (
                 select(ArxivPaperReview.id)
                 .join(ArxivCollection, ArxivCollection.id == ArxivPaperReview.collection_id)
                 .where(
                     ArxivPaperReview.paper_id == ArxivPaper.id,
                     ArxivCollection.user_id == current_user.id,
-                    or_(
-                        ArxivPaperReview.title_zh.ilike(keyword_pattern),
-                        ArxivPaperReview.abstract_zh.ilike(keyword_pattern),
-                        ArxivPaperReview.comment.ilike(keyword_pattern),
-                    ),
+                    ArxivPaperReview.comment.ilike(keyword_pattern),
                 )
                 .exists()
             )
@@ -62,7 +71,8 @@ class ArxivRepository:
                     ArxivPaper.title_en.ilike(keyword_pattern),
                     ArxivPaper.abstract_en.ilike(keyword_pattern),
                     ArxivPaper.comments.ilike(keyword_pattern),
-                    review_exists,
+                    enrichment_exists,
+                    review_comment_exists,
                 )
             )
         if worth_read is not None:
@@ -100,6 +110,7 @@ class ArxivRepository:
             .where(*filters)
             .execution_options(populate_existing=True)
             .options(
+                selectinload(ArxivPaper.enrichments),
                 selectinload(ArxivPaper.reviews).selectinload(ArxivPaperReview.collection),
                 selectinload(ArxivPaper.collection_items).selectinload(ArxivCollectionItem.collection),
                 selectinload(ArxivPaper.task_links).selectinload(ArxivPaperTaskLink.task),
@@ -119,6 +130,7 @@ class ArxivRepository:
             .where(ArxivPaper.id == paper_id)
             .execution_options(populate_existing=True)
             .options(
+                selectinload(ArxivPaper.enrichments),
                 selectinload(ArxivPaper.reviews).selectinload(ArxivPaperReview.collection),
                 selectinload(ArxivPaper.collection_items).selectinload(ArxivCollectionItem.collection),
                 selectinload(ArxivPaper.task_links).selectinload(ArxivPaperTaskLink.task),
@@ -132,6 +144,7 @@ class ArxivRepository:
             .where(ArxivPaper.arxiv_id == arxiv_id)
             .execution_options(populate_existing=True)
             .options(
+                selectinload(ArxivPaper.enrichments),
                 selectinload(ArxivPaper.reviews).selectinload(ArxivPaperReview.collection),
                 selectinload(ArxivPaper.collection_items).selectinload(ArxivCollectionItem.collection),
                 selectinload(ArxivPaper.task_links).selectinload(ArxivPaperTaskLink.task),
@@ -159,6 +172,9 @@ class ArxivRepository:
             .options(
                 selectinload(ArxivCollection.items)
                 .selectinload(ArxivCollectionItem.paper)
+                .selectinload(ArxivPaper.enrichments),
+                selectinload(ArxivCollection.items)
+                .selectinload(ArxivCollectionItem.paper)
                 .selectinload(ArxivPaper.reviews)
                 .selectinload(ArxivPaperReview.collection),
                 selectinload(ArxivCollection.items)
@@ -181,6 +197,9 @@ class ArxivRepository:
             .where(ArxivCollection.user_id == current_user.id)
             .execution_options(populate_existing=True)
             .options(
+                selectinload(ArxivCollection.items)
+                .selectinload(ArxivCollectionItem.paper)
+                .selectinload(ArxivPaper.enrichments),
                 selectinload(ArxivCollection.items)
                 .selectinload(ArxivCollectionItem.paper)
                 .selectinload(ArxivPaper.reviews)
@@ -238,6 +257,18 @@ class ArxivRepository:
         self.db.add(link)
         self.db.flush()
         return link
+
+    def get_enrichment(self, *, paper_id: int, enrichment_type: str = "global_summary") -> ArxivPaperEnrichment | None:
+        stmt = select(ArxivPaperEnrichment).where(
+            ArxivPaperEnrichment.paper_id == paper_id,
+            ArxivPaperEnrichment.enrichment_type == enrichment_type,
+        )
+        return self.db.scalar(stmt)
+
+    def add_enrichment(self, enrichment: ArxivPaperEnrichment) -> ArxivPaperEnrichment:
+        self.db.add(enrichment)
+        self.db.flush()
+        return enrichment
 
     def add_run(self, run: ArxivDiscoveryRun) -> ArxivDiscoveryRun:
         self.db.add(run)
