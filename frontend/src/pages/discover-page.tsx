@@ -421,6 +421,8 @@ export function DiscoverPage() {
     const digestQuery = useQuery({
         queryKey: ["discovery-daily-digest"],
         queryFn: () => getDiscoveryDailyDigest(),
+        staleTime: 5 * 60 * 1000, // daily digest 数据变化频率低，缓存 5 分钟
+        retry: 2,
     })
 
     const collectionsQuery = useQuery({
@@ -431,7 +433,6 @@ export function DiscoverPage() {
     const categoryOptions = Array.from(
         new Set(
             [
-                ...(digestQuery.data?.groups.map((group) => group.category) ?? []),
                 ...(papersQuery.data?.items.map((paper) => paper.primary_category).filter(Boolean) ?? []),
                 ...(collectionsQuery.data?.items.flatMap((collection) => collection.categories_json) ?? []),
             ].filter((value): value is string => Boolean(value))
@@ -439,17 +440,9 @@ export function DiscoverPage() {
     ).sort()
 
     const quickStats = {
-        total: digestQuery.data?.groups.reduce((sum, group) => sum + group.papers.length, 0) ?? 0,
-        worthRead:
-            digestQuery.data?.groups.reduce(
-                (sum, group) => sum + group.papers.filter((paper) => paper.worth_read).length,
-                0
-            ) ?? 0,
-        translated:
-            digestQuery.data?.groups.reduce(
-                (sum, group) => sum + group.papers.filter((paper) => paper.has_translation).length,
-                0
-            ) ?? 0,
+        total: digestQuery.data?.total_papers ?? 0,
+        worthRead: digestQuery.data?.total_worth_read ?? 0,
+        translated: digestQuery.data?.total_translated ?? 0,
     }
 
     function handleOpenAddDialog(paper: DiscoveryPaperSummary) {

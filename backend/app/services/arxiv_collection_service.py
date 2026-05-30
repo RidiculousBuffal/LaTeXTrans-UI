@@ -109,6 +109,11 @@ class ArxivCollectionService:
         self.repository.delete_collection_item(item)
         self.repository.commit()
 
+    def delete_collection(self, collection_id: int, *, current_user: User) -> None:
+        collection = self._require_collection(collection_id, current_user=current_user)
+        self.repository.delete_collection(collection)
+        self.repository.commit()
+
     def update_item_translate_decision(
         self,
         *,

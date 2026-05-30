@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import shutil
 import tarfile
 import tempfile
@@ -24,6 +25,10 @@ from backend.app.models.discovery import ArxivCollection, ArxivDiscoveryRun, Arx
 from backend.app.models.user import User
 from backend.app.repositories.arxiv_repository import ArxivRepository
 from backend.app.services.arxiv_persistence_service import ArxivPersistenceService
+
+logger = logging.getLogger(__name__)
+
+MAX_ARTICLES_PER_CATEGORY = 50
 
 
 class JudgeResult(BaseModel):
@@ -263,6 +268,7 @@ class ArxivPipelineService:
 
     def _crawl_category(self, category: str) -> list[dict[str, Any]]:
         url = f"{self.BASE_URL}/list/{category}/new"
+        logger.info("[crawl] 开始抓取类别 category=%s url=%s", category, url)
         headers = {
             "User-Agent": (
                 "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
@@ -275,17 +281,43 @@ class ArxivPipelineService:
         soup = BeautifulSoup(response.text, "html.parser")
         listing = soup.find("dl", id="articles")
         if listing is None:
+            logger.warning("[crawl] 类别 %s 未找到文章列表 (dl#articles)", category)
             return []
 
         dts = listing.find_all("dt", recursive=False)
         dds = listing.find_all("dd", recursive=False)
+        total_candidates = len(dts)
         scraped_at = datetime.utcnow()
         articles: list[dict[str, Any]] = []
 
-        for dt, dd in zip(dts, dds):
+        for idx, (dt, dd) in enumerate(zip(dts, dds)):
+            if len(articles) >= MAX_ARTICLES_PER_CATEGORY:
+                logger.info(
+                    "[crawl] 类别 %s 已达上限 %d 条，跳过剩余 %d 条候选",
+                    category,
+                    MAX_ARTICLES_PER_CATEGORY,
+                    total_candidates - idx,
+                )
+                break
             parsed = self._parse_article(dt, dd, category=category, scraped_at=scraped_at)
             if parsed is not None:
                 articles.append(parsed)
+                logger.debug(
+                    "[parse] 类别 %s 第 %d 条 arxiv_id=%s title=%s",
+                    category,
+                    len(articles),
+                    parsed["arxiv_id"],
+                    parsed["title"][:60],
+                )
+            else:
+                logger.debug("[parse] 类别 %s 第 %d 个条目解析失败，已跳过", category, idx + 1)
+
+        logger.info(
+            "[crawl] 类别 %s 抓取完成：候选 %d 条，成功解析 %d 条",
+            category,
+            total_candidates,
+            len(articles),
+        )
         return articles
 
     def _parse_article(self, dt, dd, *, category: str, scraped_at: datetime) -> dict[str, Any] | None:
@@ -304,10 +336,12 @@ class ArxivPipelineService:
                 pdf_url = urljoin(self.BASE_URL, href)
 
         if not abs_url or not arxiv_id:
+            logger.debug("[parse] 跳过条目：缺少 abs_url 或 arxiv_id")
             return None
 
         meta = dd.find("div", class_="meta")
         if meta is None:
+            logger.debug("[parse] arxiv_id=%s 跳过：缺少 meta div", arxiv_id)
             return None
 
         title_div = meta.find("div", class_="list-title")
@@ -316,6 +350,7 @@ class ArxivPipelineService:
         subjects_div = meta.find("div", class_="list-subjects")
         comments_div = meta.find("div", class_="list-comments")
         if title_div is None or abstract_div is None:
+            logger.debug("[parse] arxiv_id=%s 跳过：缺少 title 或 abstract", arxiv_id)
             return None
 
         title = title_div.get_text(" ", strip=True).replace("Title:", "", 1).strip()
@@ -324,6 +359,12 @@ class ArxivPipelineService:
         comments = None
         if comments_div is not None:
             comments = comments_div.get_text(" ", strip=True).replace("Comments:", "", 1).strip() or None
+            if comments:
+                logger.debug("[parse] arxiv_id=%s 提取到 comments: %s", arxiv_id, comments[:100])
+            else:
+                logger.debug("[parse] arxiv_id=%s comments 字段为空", arxiv_id)
+        else:
+            logger.debug("[parse] arxiv_id=%s 无 comments 字段", arxiv_id)
 
         subjects: list[str] = []
         primary_subject = None
@@ -339,7 +380,7 @@ class ArxivPipelineService:
                     continue
                 subjects.append(normalized)
 
-        return {
+        result = {
             "arxiv_id": arxiv_id,
             "category": category,
             "abs_url": abs_url,
@@ -351,6 +392,15 @@ class ArxivPipelineService:
             "abstract": abstract,
             "scraped_at": scraped_at,
         }
+        logger.debug(
+            "[parse] 解析成功 arxiv_id=%s category=%s authors=%d subjects=%d has_comments=%s",
+            arxiv_id,
+            category,
+            len(authors),
+            len(result["subjects"]),
+            comments is not None,
+        )
+        return result
 
     def _match_collections(self, *, article: dict[str, Any], collections: list[ArxivCollection]) -> list[ArxivCollection]:
         article_categories = {article["category"], *article["subjects"]}
@@ -404,9 +454,12 @@ class ArxivPipelineService:
 
     def _enrich_article(self, *, article: dict[str, Any], model_name: str) -> EnrichResult:
         """调用 Global Enrichment Agent，只做忠实翻译，不依赖 collection 偏好。"""
+        arxiv_id = article.get("arxiv_id", "unknown")
         if not self.settings.openai_api_key:
+            logger.info("[enrich] arxiv_id=%s 无 API Key，使用回退策略（保留英文原文）", arxiv_id)
             return self._fallback_enrich(article=article)
 
+        logger.info("[enrich] arxiv_id=%s 开始翻译标题和摘要 model=%s", arxiv_id, model_name)
         prompt = (
             "你是一个学术论文翻译助手，请将以下论文的标题和摘要忠实地翻译成中文。\n"
             "要求：\n"
@@ -425,9 +478,17 @@ class ArxivPipelineService:
             result = agent.invoke({"messages": [SystemMessage(content=prompt), message]})
             structured = result["structured_response"]
             if isinstance(structured, EnrichResult):
-                return structured
-            return EnrichResult.model_validate(structured)
-        except Exception:
+                enrich_result = structured
+            else:
+                enrich_result = EnrichResult.model_validate(structured)
+            logger.info(
+                "[enrich] arxiv_id=%s 翻译完成 chinese_name=%s",
+                arxiv_id,
+                enrich_result.chinese_name[:40],
+            )
+            return enrich_result
+        except Exception as exc:
+            logger.warning("[enrich] arxiv_id=%s 翻译失败，使用回退策略 error=%s", arxiv_id, exc)
             return self._fallback_enrich(article=article)
 
     def _get_enrich_agent(self, model_name: str):
@@ -454,9 +515,21 @@ class ArxivPipelineService:
         return self._build_judgment(article=article, collection=collection, enrichment=enrichment)
 
     def _judge_article(self, *, article: dict[str, Any], collection: ArxivCollection, model_name: str) -> JudgmentResult:
+        arxiv_id = article.get("arxiv_id", "unknown")
         if not self.settings.openai_api_key:
+            logger.info(
+                "[judge] arxiv_id=%s collection=%s 无 API Key，使用关键词回退策略",
+                arxiv_id,
+                collection.name,
+            )
             return self._fallback_judge(article=article, collection=collection)
 
+        logger.info(
+            "[judge] arxiv_id=%s collection=%s 开始生成 comment model=%s",
+            arxiv_id,
+            collection.name,
+            model_name,
+        )
         prompt = self._build_judger_prompt(collection)
         message = HumanMessage(
             content=(
@@ -474,9 +547,24 @@ class ArxivPipelineService:
             result = agent.invoke({"messages": [SystemMessage(content=prompt), message]})
             structured = result["structured_response"]
             if isinstance(structured, JudgmentResult):
-                return structured
-            return JudgmentResult.model_validate(structured)
-        except Exception:
+                judgment = structured
+            else:
+                judgment = JudgmentResult.model_validate(structured)
+            logger.info(
+                "[judge] arxiv_id=%s collection=%s 完成 worth_read=%s comment=%s",
+                arxiv_id,
+                collection.name,
+                judgment.worth_read,
+                (judgment.comment or "")[:80],
+            )
+            return judgment
+        except Exception as exc:
+            logger.warning(
+                "[judge] arxiv_id=%s collection=%s 生成失败，使用回退策略 error=%s",
+                arxiv_id,
+                collection.name,
+                exc,
+            )
             return self._fallback_judge(article=article, collection=collection)
 
     def _get_judge_agent(self, model_name: str):
@@ -522,11 +610,14 @@ class ArxivPipelineService:
         )
 
     def _analyze_source_metadata(self, article: dict[str, Any]) -> dict[str, Any]:
+        arxiv_id = article.get("arxiv_id", "unknown")
         pdf_url = article.get("pdf_url")
         if not pdf_url:
+            logger.debug("[analyze] arxiv_id=%s 跳过源码分析：缺少 pdf_url", arxiv_id)
             return {"status": "skipped", "reason": "missing_pdf_url"}
 
         src_url = str(pdf_url).replace("/pdf/", "/src/")
+        logger.info("[analyze] arxiv_id=%s 开始下载源码包 src_url=%s", arxiv_id, src_url)
         temp_root = Path(tempfile.mkdtemp(prefix="latextrans-discovery-"))
         archive_path = temp_root / "source.tar.gz"
         extract_root = temp_root / "extract"
@@ -556,6 +647,12 @@ class ArxivPipelineService:
                 elif path.suffix.lower() in {".png", ".jpg", ".jpeg", ".pdf", ".svg"}:
                     figure_count += 1
 
+            logger.info(
+                "[analyze] arxiv_id=%s 源码分析完成 tex_files=%d figure_files=%d",
+                arxiv_id,
+                tex_count,
+                figure_count,
+            )
             return {
                 "status": "succeeded",
                 "source_url": src_url,
@@ -564,6 +661,7 @@ class ArxivPipelineService:
                 "metadata_ready": tex_count > 0,
             }
         except Exception as exc:
+            logger.warning("[analyze] arxiv_id=%s 源码分析失败 error=%s", arxiv_id, exc)
             return {"status": "failed", "source_url": src_url, "error": str(exc)}
         finally:
             shutil.rmtree(temp_root, ignore_errors=True)

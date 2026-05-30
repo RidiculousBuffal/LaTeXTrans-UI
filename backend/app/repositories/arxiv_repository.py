@@ -124,6 +124,33 @@ class ArxivRepository:
         total = self.db.scalar(count_stmt) or 0
         return items, total
 
+    def list_papers_for_digest(
+        self,
+        *,
+        source_run_date: date,
+        page_size: int = 200,
+    ) -> list[ArxivPaper]:
+        """daily-digest 专用查询：只加载必要的关联，不执行 COUNT。
+
+        - enrichments: 用于 title_zh / abstract_zh
+        - reviews → collection: 用于 worth_read / comment，需要 collection.user_id 做过滤
+        - collection_items → collection: 用于 membership，需要 collection.user_id 做过滤
+        - task_links: 只需要 paper_id 存在与否（has_translation），不需要加载 task 详情
+        """
+        stmt = (
+            select(ArxivPaper)
+            .where(ArxivPaper.source_run_date == source_run_date)
+            .options(
+                selectinload(ArxivPaper.enrichments),
+                selectinload(ArxivPaper.reviews).selectinload(ArxivPaperReview.collection),
+                selectinload(ArxivPaper.collection_items).selectinload(ArxivCollectionItem.collection),
+                selectinload(ArxivPaper.task_links),  # 不再深层加载 task 详情
+            )
+            .order_by(ArxivPaper.scraped_at.desc(), ArxivPaper.id.desc())
+            .limit(page_size)
+        )
+        return list(self.db.scalars(stmt).all())
+
     def get_paper_by_id(self, paper_id: int) -> ArxivPaper | None:
         stmt = (
             select(ArxivPaper)
@@ -238,6 +265,10 @@ class ArxivRepository:
         self.db.flush()
         return item
 
+    def delete_collection(self, collection: ArxivCollection) -> None:
+        self.db.delete(collection)
+        self.db.flush()
+
     def delete_collection_item(self, item: ArxivCollectionItem) -> None:
         self.db.delete(item)
         self.db.flush()
@@ -296,6 +327,21 @@ class ArxivRepository:
         )
         count_stmt = select(func.count()).select_from(ArxivDiscoveryRun)
         return list(self.db.scalars(stmt).all()), self.db.scalar(count_stmt) or 0
+
+    def count_translated_papers_for_run(self, *, source_run_date: date) -> int:
+        """统计指定 run date 下有翻译任务的论文数量（一条 SQL，不加载 paper 数据）。"""
+        stmt = (
+            select(func.count(ArxivPaper.id))
+            .where(
+                ArxivPaper.source_run_date == source_run_date,
+                exists(
+                    select(ArxivPaperTaskLink.id).where(
+                        ArxivPaperTaskLink.paper_id == ArxivPaper.id
+                    )
+                ),
+            )
+        )
+        return self.db.scalar(stmt) or 0
 
     def get_latest_completed_run(self) -> ArxivDiscoveryRun | None:
         stmt = (

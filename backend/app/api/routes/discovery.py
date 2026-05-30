@@ -132,6 +132,16 @@ def add_collection_item(
     return discovery_service._build_collection_response(collection, current_user=current_user)
 
 
+@router.delete("/collections/{collection_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_collection(
+    collection_id: int,
+    service: ArxivCollectionService = Depends(get_collection_service),
+    current_user: User = Depends(get_current_user),
+) -> Response:
+    service.delete_collection(collection_id, current_user=current_user)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
 @router.delete("/collections/{collection_id}/items/{paper_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_collection_item(
     collection_id: int,

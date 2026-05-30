@@ -13,6 +13,7 @@ import {
 
 import {
   createDiscoveryCollection,
+  deleteDiscoveryCollection,
   listDiscoveryCollections,
   removePaperFromCollection,
   updateDiscoveryCollection,
@@ -251,6 +252,7 @@ function CollectionFormDialog({
 
 function CollectionCard({ collection }: { collection: DiscoveryCollection }) {
   const [isEditing, setIsEditing] = useState(false)
+  const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false)
 
   const removeMutation = useMutation({
     mutationFn: ({ paperId }: { paperId: number }) => removePaperFromCollection(collection.id, paperId),
@@ -263,6 +265,21 @@ function CollectionCard({ collection }: { collection: DiscoveryCollection }) {
     },
     onError: (error) => {
       toast.error("Failed to remove paper", { description: getErrorMessage(error) })
+    },
+  })
+
+  const deleteCollectionMutation = useMutation({
+    mutationFn: () => deleteDiscoveryCollection(collection.id),
+    onSuccess: async () => {
+      toast.success("Collection deleted")
+      setIsDeleteConfirmOpen(false)
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["discovery-collections"] }),
+        queryClient.invalidateQueries({ queryKey: ["discovery-papers"] }),
+      ])
+    },
+    onError: (error) => {
+      toast.error("Failed to delete collection", { description: getErrorMessage(error) })
     },
   })
 
@@ -281,6 +298,18 @@ function CollectionCard({ collection }: { collection: DiscoveryCollection }) {
               <Badge variant="outline">{collection.item_count} papers</Badge>
               <Button variant="outline" size="sm" onClick={() => setIsEditing(true)}>
                 <PencilIcon className="size-4" />
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setIsDeleteConfirmOpen(true)}
+                disabled={deleteCollectionMutation.isPending}
+              >
+                {deleteCollectionMutation.isPending ? (
+                  <Loader2Icon className="size-4 animate-spin" />
+                ) : (
+                  <Trash2Icon className="size-4" />
+                )}
               </Button>
             </div>
           </div>
@@ -392,6 +421,38 @@ function CollectionCard({ collection }: { collection: DiscoveryCollection }) {
         mode="edit"
         collection={collection}
       />
+      <Dialog open={isDeleteConfirmOpen} onOpenChange={setIsDeleteConfirmOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete collection</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete &ldquo;{collection.name}&rdquo;? This will permanently
+              remove the collection and all its saved papers. This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setIsDeleteConfirmOpen(false)}
+              disabled={deleteCollectionMutation.isPending}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => deleteCollectionMutation.mutate()}
+              disabled={deleteCollectionMutation.isPending}
+            >
+              {deleteCollectionMutation.isPending ? (
+                <Loader2Icon className="size-4 animate-spin" data-icon="inline-start" />
+              ) : (
+                <Trash2Icon data-icon="inline-start" />
+              )}
+              Delete
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   )
 }

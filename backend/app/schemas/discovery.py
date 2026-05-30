@@ -194,14 +194,11 @@ class DiscoveryRunListResponse(APIModel):
     page_size: int
 
 
-class DiscoveryDailyDigestGroupResponse(APIModel):
-    category: str
-    papers: list[DiscoveryPaperSummaryResponse]
-
-
 class DiscoveryDailyDigestResponse(APIModel):
     run: DiscoveryRunResponse | None = None
-    groups: list[DiscoveryDailyDigestGroupResponse] = Field(default_factory=list)
+    total_papers: int = 0
+    total_worth_read: int = 0
+    total_translated: int = 0
 
 
 class DiscoveryPaperTaskResponse(APIModel):

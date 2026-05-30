@@ -281,7 +281,8 @@ export function getDiscoveryPaper(paperId: number) {
 }
 
 export function getDiscoveryDailyDigest() {
-  return withApiError(api.get<DiscoveryDailyDigest>("/discovery/daily-digest"))
+  // 该接口需加载大量关联数据，单独设置更长的超时时间
+  return withApiError(api.get<DiscoveryDailyDigest>("/discovery/daily-digest", { timeout: 60_000 }))
 }
 
 export function listDiscoveryCollections() {
@@ -297,6 +298,10 @@ export function updateDiscoveryCollection(
   payload: DiscoveryCollectionUpdatePayload
 ) {
   return withApiError(api.patch<DiscoveryCollection>(`/discovery/collections/${collectionId}`, payload))
+}
+
+export function deleteDiscoveryCollection(collectionId: number) {
+  return withApiError(api.delete<void>(`/discovery/collections/${collectionId}`))
 }
 
 export function addPaperToCollection(

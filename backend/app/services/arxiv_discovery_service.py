@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from collections import defaultdict
 from datetime import date
 
 from fastapi import HTTPException, status
@@ -16,7 +15,6 @@ from backend.app.schemas.discovery import (
     DiscoveryCollectionListResponse,
     DiscoveryCollectionMembershipResponse,
     DiscoveryCollectionResponse,
-    DiscoveryDailyDigestGroupResponse,
     DiscoveryDailyDigestResponse,
     DiscoveryPaperDetailResponse,
     DiscoveryPaperEnrichmentResponse,
@@ -98,24 +96,16 @@ class ArxivDiscoveryService:
     def get_daily_digest(self, *, current_user: User) -> DiscoveryDailyDigestResponse:
         run = self.repository.get_latest_completed_run()
         if run is None:
-            return DiscoveryDailyDigestResponse(run=None, groups=[])
-        papers, _ = self.repository.list_papers(
-            page=1,
-            page_size=200,
-            current_user=current_user,
-            source_run_date=run.source_run_date,
+            return DiscoveryDailyDigestResponse(run=None, total_papers=0, total_worth_read=0, total_translated=0)
+        total_translated = self.repository.count_translated_papers_for_run(
+            source_run_date=run.source_run_date
         )
-        grouped: dict[str, list[DiscoveryPaperSummaryResponse]] = defaultdict(list)
-        for paper in papers:
-            grouped[paper.primary_category or "uncategorized"].append(
-                self._build_paper_summary_response(paper, current_user=current_user)
-            )
-        groups = [
-            DiscoveryDailyDigestGroupResponse(category=category, papers=items)
-            for category, items in grouped.items()
-        ]
-        groups.sort(key=lambda item: item.category)
-        return DiscoveryDailyDigestResponse(run=DiscoveryRunResponse.model_validate(run), groups=groups)
+        return DiscoveryDailyDigestResponse(
+            run=DiscoveryRunResponse.model_validate(run),
+            total_papers=run.total_papers,
+            total_worth_read=run.total_worth_read,
+            total_translated=total_translated,
+        )
 
     def create_task_from_paper(
         self,
@@ -234,13 +224,23 @@ class ArxivDiscoveryService:
         *,
         current_user: User,
         preferred_collection_id: int | None = None,
+        skip_task_details: bool = False,
     ) -> DiscoveryPaperSummaryResponse:
         reviews = [review for review in paper.reviews if review.collection.user_id == current_user.id]
         memberships = [
             item for item in paper.collection_items if item.collection.user_id == current_user.id
         ]
         selected_review = self._pick_review(reviews, preferred_collection_id=preferred_collection_id)
-        tasks = self._visible_task_summaries(paper, current_user=current_user)
+
+        # skip_task_details=True 时（如 daily-digest），task_links 未预加载 task 详情，
+        # 直接用 task_links 数量判断，避免触发懒加载
+        if skip_task_details:
+            task_count = len(paper.task_links)
+            has_translation = task_count > 0
+        else:
+            tasks = self._visible_task_summaries(paper, current_user=current_user)
+            task_count = len(tasks)
+            has_translation = bool(tasks)
 
         # Phase 2: title_zh/abstract_zh 只从全局 enrichment 读，review 不再携带这两个字段
         active_enrichment = self._pick_enrichment(paper.enrichments)
@@ -265,8 +265,8 @@ class ArxivDiscoveryService:
             abstract_zh=abstract_zh,
             worth_read=selected_review.worth_read if selected_review else None,
             comment=selected_review.comment if selected_review else None,
-            has_translation=bool(tasks),
-            translation_task_count=len(tasks),
+            has_translation=has_translation,
+            translation_task_count=task_count,
             collections=[self._build_membership_response(item) for item in memberships],
             created_at=paper.created_at,
             updated_at=paper.updated_at,

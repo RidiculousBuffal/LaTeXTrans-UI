@@ -311,14 +311,11 @@ export type DiscoveryRun = {
   updated_at: string
 }
 
-export type DiscoveryDailyDigestGroup = {
-  category: string
-  papers: DiscoveryPaperSummary[]
-}
-
 export type DiscoveryDailyDigest = {
   run: DiscoveryRun | null
-  groups: DiscoveryDailyDigestGroup[]
+  total_papers: number
+  total_worth_read: number
+  total_translated: number
 }
 
 export type DiscoveryPaperTaskResponse = {
