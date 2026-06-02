@@ -51,7 +51,9 @@ api.interceptors.response.use(
         !isSessionProbe &&
         !window.location.pathname.startsWith("/login") &&
         !window.location.pathname.startsWith("/register") &&
-        !window.location.pathname.startsWith("/landing")
+        !window.location.pathname.startsWith("/landing") &&
+        !window.location.pathname.startsWith("/gallery") &&
+        !window.location.pathname.startsWith("/public")
       ) {
         window.location.href = "/login"
       }
@@ -154,8 +156,32 @@ export function listTasks(filters: TaskListFilters) {
   )
 }
 
+export function listPublicDiscoveryPapers(filters: DiscoveryPaperListFilters) {
+  return withApiError(
+    api.get<PaginatedDiscoveryPapers>("/discovery/public/papers", {
+      params: buildDiscoverySearchParams(filters),
+    })
+  )
+}
+
+export function getPublicDiscoveryPaper(paperId: number) {
+  return withApiError(api.get<DiscoveryPaperDetail>(`/discovery/public/papers/${paperId}`))
+}
+
+export function listPublicTasks(filters: TaskListFilters) {
+  return withApiError(
+    api.get<PaginatedTasks>("/tasks/public", {
+      params: buildSearchParams(filters),
+    })
+  )
+}
+
 export function getTask(taskId: string) {
   return withApiError(api.get<TaskDetail>(`/tasks/${taskId}`))
+}
+
+export function getPublicTask(taskId: string) {
+  return withApiError(api.get<TaskDetail>(`/tasks/public/${taskId}`))
 }
 
 export function createArxivTask(payload: CreateArxivTaskPayload) {
@@ -210,6 +236,10 @@ export function deleteTask(taskId: string) {
 
 export function listArtifacts(taskId: string) {
   return withApiError(api.get<ArtifactListResponse>(`/tasks/${taskId}/artifacts`))
+}
+
+export function listPublicArtifacts(taskId: string) {
+  return withApiError(api.get<ArtifactListResponse>(`/tasks/public/${taskId}/artifacts`))
 }
 
 export function getTaskLogs(taskId: string) {

@@ -28,7 +28,7 @@ class ArxivRepository:
         *,
         page: int,
         page_size: int,
-        current_user: User,
+        current_user: User | None,
         category: str | None = None,
         keyword: str | None = None,
         worth_read: bool | None = None,
@@ -55,44 +55,48 @@ class ArxivRepository:
                 )
                 .exists()
             )
-            review_comment_exists = (
-                select(ArxivPaperReview.id)
-                .join(ArxivCollection, ArxivCollection.id == ArxivPaperReview.collection_id)
-                .where(
-                    ArxivPaperReview.paper_id == ArxivPaper.id,
-                    ArxivCollection.user_id == current_user.id,
-                    ArxivPaperReview.comment.ilike(keyword_pattern),
-                )
-                .exists()
-            )
-            filters.append(
-                or_(
-                    ArxivPaper.arxiv_id.ilike(keyword_pattern),
-                    ArxivPaper.title_en.ilike(keyword_pattern),
-                    ArxivPaper.abstract_en.ilike(keyword_pattern),
-                    ArxivPaper.comments.ilike(keyword_pattern),
-                    enrichment_exists,
-                    review_comment_exists,
-                )
-            )
-        if worth_read is not None:
-            filters.append(
-                exists(
+            keyword_filters = [
+                ArxivPaper.arxiv_id.ilike(keyword_pattern),
+                ArxivPaper.title_en.ilike(keyword_pattern),
+                ArxivPaper.abstract_en.ilike(keyword_pattern),
+                ArxivPaper.comments.ilike(keyword_pattern),
+                enrichment_exists,
+            ]
+            if current_user is not None:
+                review_comment_exists = (
                     select(ArxivPaperReview.id)
                     .join(ArxivCollection, ArxivCollection.id == ArxivPaperReview.collection_id)
                     .where(
                         ArxivPaperReview.paper_id == ArxivPaper.id,
                         ArxivCollection.user_id == current_user.id,
-                        ArxivPaperReview.worth_read.is_(worth_read),
+                        ArxivPaperReview.comment.ilike(keyword_pattern),
                     )
+                    .exists()
                 )
-            )
+                keyword_filters.append(review_comment_exists)
+            filters.append(or_(*keyword_filters))
+        if worth_read is not None:
+            if current_user is None:
+                from sqlalchemy import false
+
+                filters.append(false())
+                # 匿名访问没有 collection-scoped review，可直接返回空结果条件
+                pass
+            else:
+                review_stmt = select(ArxivPaperReview.id).where(
+                    ArxivPaperReview.paper_id == ArxivPaper.id,
+                    ArxivPaperReview.worth_read.is_(worth_read),
+                )
+                review_stmt = review_stmt.join(
+                    ArxivCollection, ArxivCollection.id == ArxivPaperReview.collection_id
+                ).where(ArxivCollection.user_id == current_user.id)
+                filters.append(exists(review_stmt))
         if translated is not None:
             translated_exists = exists(
                 select(ArxivPaperTaskLink.id).where(ArxivPaperTaskLink.paper_id == ArxivPaper.id)
             )
             filters.append(translated_exists if translated else ~translated_exists)
-        if collection_id is not None:
+        if collection_id is not None and current_user is not None:
             filters.append(
                 exists(
                     select(ArxivCollectionItem.id)

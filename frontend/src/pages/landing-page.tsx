@@ -3,6 +3,7 @@ import {Link, useNavigate} from "react-router-dom"
 import {useTheme} from "next-themes"
 import {
     ArrowRightIcon,
+    BookOpenIcon,
     MoonIcon,
     SunIcon,
     CheckCircle2Icon,
@@ -186,6 +187,18 @@ export default function LandingPage() {
                     </div>
 
                     <div className="animate-fade-up-d3 mt-10 flex flex-wrap items-center justify-center gap-3">
+                        <Button size="lg" variant="outline" className="h-12 px-8 text-base" asChild>
+                            <Link to="/gallery">
+                                <BookOpenIcon className="mr-2 h-4 w-4"/>
+                                公开论文库
+                            </Link>
+                        </Button>
+                        <Button size="lg" variant="outline" className="h-12 px-8 text-base" asChild>
+                            <Link to="/public/tasks">
+                                <SparklesIcon className="mr-2 h-4 w-4"/>
+                                公开翻译任务
+                            </Link>
+                        </Button>
                         {registrationEnabled && (
                             <Button size="lg" className="h-12 px-8 text-base shadow-lg shadow-primary/25" asChild>
                                 <Link to="/register">

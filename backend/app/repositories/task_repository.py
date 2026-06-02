@@ -78,10 +78,9 @@ class TaskRepository:
             filters.append(TranslationTask.created_at <= created_to)
 
         # Scope / visibility filter
-        if current_user is not None:
-            scope_filter = self._build_scope_filter(current_user, scope, db or self.db)
-            if scope_filter is not None:
-                filters.append(scope_filter)
+        scope_filter = self._build_scope_filter(current_user, scope, db or self.db)
+        if scope_filter is not None:
+            filters.append(scope_filter)
 
         stmt = (
             select(TranslationTask)
@@ -96,7 +95,11 @@ class TaskRepository:
         total = self._scalar_with_retry(count_stmt) or 0
         return items, total
 
-    def _build_scope_filter(self, user: User, scope: str, db: Session):
+    def _build_scope_filter(self, user: User | None, scope: str, db: Session):
+        if user is None:
+            if scope == "public":
+                return TranslationTask.visibility == "public"
+            return None
         if user.role == UserRole.ADMIN and scope == "all":
             return None  # No filter
         if scope == "mine":

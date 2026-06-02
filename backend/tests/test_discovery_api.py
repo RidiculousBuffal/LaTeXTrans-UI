@@ -236,7 +236,110 @@ def test_list_papers_and_collections_for_current_user(client: TestClient, db_ses
     assert digest_response.status_code == 200
     digest = digest_response.json()
     assert digest["run"]["status"] == "SUCCEEDED"
-    assert digest["groups"][0]["category"] == "cs.AI"
+    assert digest["total_papers"] == 1
+    assert digest["total_worth_read"] == 1
+    assert digest["total_translated"] == 1
+
+
+def test_public_discovery_and_public_task_routes_only_expose_public_data(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    owner = _create_user(db_session, "owner")
+    hidden_owner = _create_user(db_session, "hidden-owner")
+
+    paper = ArxivPaper(
+        arxiv_id="2606.00001",
+        primary_category="cs.AI",
+        title_en="Public Paper",
+        abstract_en="A public abstract.",
+        authors_json=["Owner"],
+        pdf_url="https://arxiv.org/pdf/2606.00001.pdf",
+        abs_url="https://arxiv.org/abs/2606.00001",
+        subjects_json=["cs.AI"],
+        scraped_at=datetime.utcnow(),
+        source_run_date=date(2026, 6, 2),
+    )
+    db_session.add(paper)
+    db_session.flush()
+
+    db_session.add(
+        ArxivPaperEnrichment(
+            paper_id=paper.id,
+            enrichment_type="global_summary",
+            model_name="gpt-4.1-mini",
+            title_zh="公开论文",
+            abstract_zh="公开摘要。",
+        )
+    )
+
+    public_task = TranslationTask(
+        id="public-task",
+        task_name="public-task",
+        engine=TaskEngine.LATEX,
+        source_type=TaskSourceType.ARXIV,
+        arxiv_id="2606.00001",
+        source_language="en",
+        target_language="ch",
+        model_name="gpt-4.1",
+        status=TaskStatus.SUCCEEDED,
+        current_stage=TaskStatus.SUCCEEDED.value,
+        progress_percent=100,
+        created_by=owner.username,
+        owner_user_id=owner.id,
+        visibility="public",
+    )
+    private_task = TranslationTask(
+        id="private-task",
+        task_name="private-task",
+        engine=TaskEngine.LATEX,
+        source_type=TaskSourceType.ARXIV,
+        arxiv_id="2606.00001",
+        source_language="en",
+        target_language="ch",
+        model_name="gpt-4.1",
+        status=TaskStatus.SUCCEEDED,
+        current_stage=TaskStatus.SUCCEEDED.value,
+        progress_percent=100,
+        created_by=hidden_owner.username,
+        owner_user_id=hidden_owner.id,
+        visibility="private",
+    )
+    db_session.add_all([public_task, private_task])
+    db_session.commit()
+
+    from backend.app.services.arxiv_persistence_service import ArxivPersistenceService
+
+    ArxivPersistenceService(db_session).link_task_to_paper_by_arxiv_id(task=public_task, created_by_user_id=owner.id)
+    ArxivPersistenceService(db_session).link_task_to_paper_by_arxiv_id(task=private_task, created_by_user_id=hidden_owner.id)
+    db_session.commit()
+
+    public_papers = client.get("/api/discovery/public/papers")
+    assert public_papers.status_code == 200
+    papers_payload = public_papers.json()
+    assert papers_payload["total"] == 1
+    assert papers_payload["items"][0]["translation_task_count"] == 1
+    assert papers_payload["items"][0]["collections"] == []
+
+    public_paper_detail = client.get(f"/api/discovery/public/papers/{paper.id}")
+    assert public_paper_detail.status_code == 200
+    paper_detail_payload = public_paper_detail.json()
+    assert paper_detail_payload["reviews"] == []
+    assert len(paper_detail_payload["tasks"]) == 1
+    assert paper_detail_payload["tasks"][0]["id"] == "public-task"
+
+    public_tasks = client.get("/api/tasks/public")
+    assert public_tasks.status_code == 200
+    tasks_payload = public_tasks.json()
+    assert tasks_payload["total"] == 1
+    assert tasks_payload["items"][0]["id"] == "public-task"
+
+    public_task_detail = client.get("/api/tasks/public/public-task")
+    assert public_task_detail.status_code == 200
+    assert public_task_detail.json()["id"] == "public-task"
+
+    hidden_task_detail = client.get("/api/tasks/public/private-task")
+    assert hidden_task_detail.status_code == 403
 
 
 def test_create_and_update_collection_via_api(client: TestClient, db_session: Session) -> None:

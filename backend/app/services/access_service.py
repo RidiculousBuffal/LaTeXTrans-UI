@@ -12,13 +12,13 @@ class AccessService:
         self.db = db
 
     def can_view_task(self, task: TranslationTask, user: User | None) -> bool:
+        if task.visibility == "public":
+            return True
         if user is None:
             return False
         if user.role == UserRole.ADMIN:
             return True
         if task.owner_user_id == user.id:
-            return True
-        if task.visibility == "public":
             return True
         # Check direct share
         grant = (

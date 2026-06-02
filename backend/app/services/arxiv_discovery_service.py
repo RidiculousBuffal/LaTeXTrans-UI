@@ -44,7 +44,7 @@ class ArxivDiscoveryService:
         *,
         page: int,
         page_size: int,
-        current_user: User,
+        current_user: User | None,
         category: str | None = None,
         keyword: str | None = None,
         worth_read: bool | None = None,
@@ -52,6 +52,8 @@ class ArxivDiscoveryService:
         collection_id: int | None = None,
         source_run_date: date | None = None,
     ) -> DiscoveryPaperListResponse:
+        if current_user is None:
+            collection_id = None
         papers, total = self.repository.list_papers(
             page=page,
             page_size=page_size,
@@ -66,17 +68,21 @@ class ArxivDiscoveryService:
         items = [self._build_paper_summary_response(paper, current_user=current_user, preferred_collection_id=collection_id) for paper in papers]
         return DiscoveryPaperListResponse(items=items, total=total, page=page, page_size=page_size)
 
-    def get_paper_detail(self, paper_id: int, *, current_user: User) -> DiscoveryPaperDetailResponse:
+    def get_paper_detail(self, paper_id: int, *, current_user: User | None) -> DiscoveryPaperDetailResponse:
         paper = self.repository.get_paper_by_id(paper_id)
         if paper is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Paper not found.")
         summary = self._build_paper_summary_response(paper, current_user=current_user)
         tasks = self._visible_task_summaries(paper, current_user=current_user)
-        reviews = [
-            self._build_review_response(review)
-            for review in paper.reviews
-            if review.collection.user_id == current_user.id
-        ]
+        reviews = (
+            [
+                self._build_review_response(review)
+                for review in paper.reviews
+                if review.collection.user_id == current_user.id
+            ]
+            if current_user is not None
+            else []
+        )
         active_enrichment = self._pick_enrichment(paper.enrichments)
         enrichment_response = self._build_enrichment_response(active_enrichment) if active_enrichment else None
         latest_task = tasks[0] if tasks else None
@@ -158,7 +164,7 @@ class ArxivDiscoveryService:
         paper_detail = self.get_paper_detail(paper.id, current_user=current_user)
         return DiscoveryPaperTaskResponse(task=task_response, paper=paper_detail)
 
-    def _visible_task_summaries(self, paper: ArxivPaper, *, current_user: User) -> list[TaskSummaryResponse]:
+    def _visible_task_summaries(self, paper: ArxivPaper, *, current_user: User | None) -> list[TaskSummaryResponse]:
         task_service = TaskService(self.db)
         visible: list[TaskSummaryResponse] = []
         seen: set[str] = set()
@@ -177,7 +183,7 @@ class ArxivDiscoveryService:
         self,
         collection: ArxivCollection,
         *,
-        current_user: User,
+        current_user: User | None,
     ) -> DiscoveryCollectionResponse:
         items = [self._build_collection_item_response(item, current_user=current_user) for item in collection.items]
         return DiscoveryCollectionResponse(
@@ -226,10 +232,14 @@ class ArxivDiscoveryService:
         preferred_collection_id: int | None = None,
         skip_task_details: bool = False,
     ) -> DiscoveryPaperSummaryResponse:
-        reviews = [review for review in paper.reviews if review.collection.user_id == current_user.id]
-        memberships = [
-            item for item in paper.collection_items if item.collection.user_id == current_user.id
-        ]
+        if current_user is None:
+            reviews = []
+            memberships = []
+        else:
+            reviews = [review for review in paper.reviews if review.collection.user_id == current_user.id]
+            memberships = [
+                item for item in paper.collection_items if item.collection.user_id == current_user.id
+            ]
         selected_review = self._pick_review(reviews, preferred_collection_id=preferred_collection_id)
 
         # skip_task_details=True 时（如 daily-digest），task_links 未预加载 task 详情，

@@ -12,6 +12,10 @@ import { CollectionsPage } from "@/pages/collections-page"
 import { DiscoverPage } from "@/pages/discover-page"
 import { NewTaskPage } from "@/pages/new-task-page"
 import { PaperDetailPage } from "@/pages/paper-detail-page"
+import { PublicGalleryPage } from "@/pages/public-gallery-page"
+import { PublicPaperDetailPage } from "@/pages/public-paper-detail-page"
+import { PublicTaskDetailPage } from "@/pages/public-task-detail-page"
+import { PublicTasksPage } from "@/pages/public-tasks-page"
 import { TaskDetailPage } from "@/pages/task-detail-page"
 import { TasksPage } from "@/pages/tasks-page"
 import LoginPage from "@/pages/login-page"
@@ -33,6 +37,26 @@ const router = createBrowserRouter([
   {
     path: "/register",
     element: <RegisterPage />,
+    errorElement: <RouteErrorBoundary />,
+  },
+  {
+    path: "/gallery",
+    element: <PublicGalleryPage />,
+    errorElement: <RouteErrorBoundary />,
+  },
+  {
+    path: "/gallery/papers/:paperId",
+    element: <PublicPaperDetailPage />,
+    errorElement: <RouteErrorBoundary />,
+  },
+  {
+    path: "/public/tasks",
+    element: <PublicTasksPage />,
+    errorElement: <RouteErrorBoundary />,
+  },
+  {
+    path: "/public/tasks/:taskId",
+    element: <PublicTaskDetailPage />,
     errorElement: <RouteErrorBoundary />,
   },
   {

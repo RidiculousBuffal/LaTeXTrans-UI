@@ -138,6 +138,30 @@ def list_tasks(
     )
 
 
+@router.get("/public", response_model=TaskListResponse)
+def list_public_tasks(
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=20, ge=1, le=100),
+    status_filter: str | None = Query(default=None, alias="status"),
+    task_name: str | None = None,
+    arxiv_id: str | None = None,
+    created_from: datetime | None = None,
+    created_to: datetime | None = None,
+    service: TaskService = Depends(get_task_service),
+) -> TaskListResponse:
+    return service.list_tasks(
+        page=page,
+        page_size=page_size,
+        status_filter=status_filter,
+        task_name=task_name,
+        arxiv_id=arxiv_id,
+        scope="public",
+        created_from=created_from,
+        created_to=created_to,
+        current_user=None,
+    )
+
+
 @router.get("/failures/summary", response_model=FailureSummaryResponse)
 def get_failure_summary(
     limit: int = Query(default=20, ge=1, le=100),
@@ -153,7 +177,16 @@ def get_task(
     service: TaskService = Depends(get_task_service),
     current_user: User = Depends(get_current_user),
 ) -> TaskDetailResponse:
-    return service.get_task_detail(task_id, current_user=current_user)
+    return service.get_task_detail(task_id, current_user=current_user, enforce_access=True)
+
+
+@router.get("/public/{task_id}", response_model=TaskDetailResponse)
+def get_public_task(
+    task_id: str,
+    service: TaskService = Depends(get_task_service),
+    current_user: User | None = Depends(get_optional_user),
+) -> TaskDetailResponse:
+    return service.get_task_detail(task_id, current_user=current_user, enforce_access=True)
 
 
 @router.post("/{task_id}/retry", response_model=TaskRetryResponse)
@@ -180,7 +213,16 @@ def list_artifacts(
     service: TaskService = Depends(get_task_service),
     current_user: User = Depends(get_current_user),
 ) -> ArtifactListResponse:
-    return service.list_artifacts(task_id, current_user=current_user)
+    return service.list_artifacts(task_id, current_user=current_user, enforce_access=True)
+
+
+@router.get("/public/{task_id}/artifacts", response_model=ArtifactListResponse)
+def list_public_artifacts(
+    task_id: str,
+    service: TaskService = Depends(get_task_service),
+    current_user: User | None = Depends(get_optional_user),
+) -> ArtifactListResponse:
+    return service.list_artifacts(task_id, current_user=current_user, enforce_access=True)
 
 
 @router.get("/{task_id}/logs", response_model=TaskLogsResponse)
@@ -189,7 +231,7 @@ def list_logs(
     service: TaskService = Depends(get_task_service),
     current_user: User = Depends(get_current_user),
 ) -> TaskLogsResponse:
-    return service.list_logs(task_id, current_user=current_user)
+    return service.list_logs(task_id, current_user=current_user, enforce_access=True)
 
 
 @router.delete("/{task_id}", status_code=status.HTTP_204_NO_CONTENT)

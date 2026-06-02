@@ -379,7 +379,7 @@ class TaskService:
         scope: str = "mine",
         created_from: datetime | None = None,
         created_to: datetime | None = None,
-        current_user: User,
+        current_user: User | None,
     ) -> TaskListResponse:
         tasks, total = self.repository.list_tasks(
             page=page,
@@ -400,9 +400,15 @@ class TaskService:
             page_size=page_size,
         )
 
-    def get_task_detail(self, task_id: str, current_user: User | None = None) -> TaskDetailResponse:
+    def get_task_detail(
+        self,
+        task_id: str,
+        current_user: User | None = None,
+        *,
+        enforce_access: bool = False,
+    ) -> TaskDetailResponse:
         task = self._require_task(task_id)
-        if current_user is not None:
+        if enforce_access:
             access = AccessService(self.db)
             if not access.can_view_task(task, current_user):
                 raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied.")
@@ -468,9 +474,15 @@ class TaskService:
         self.repository.commit()
         return TaskCancelResponse(task=self.get_task_detail(task_id, current_user=current_user), message="Task canceled.")
 
-    def list_artifacts(self, task_id: str, current_user: User | None = None) -> ArtifactListResponse:
+    def list_artifacts(
+        self,
+        task_id: str,
+        current_user: User | None = None,
+        *,
+        enforce_access: bool = False,
+    ) -> ArtifactListResponse:
         task = self._require_task(task_id)
-        if current_user is not None:
+        if enforce_access:
             access = AccessService(self.db)
             if not access.can_view_task(task, current_user):
                 raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied.")
@@ -479,16 +491,22 @@ class TaskService:
             items=[
                 self._to_artifact_response(
                     artifact,
-                    include_sensitive=current_user is None or current_user.role == UserRole.ADMIN,
+                    include_sensitive=current_user is not None and current_user.role == UserRole.ADMIN,
                 )
                 for artifact in task.artifacts
                 if self._is_visible_artifact(artifact)
             ],
         )
 
-    def list_logs(self, task_id: str, current_user: User | None = None) -> TaskLogsResponse:
+    def list_logs(
+        self,
+        task_id: str,
+        current_user: User | None = None,
+        *,
+        enforce_access: bool = False,
+    ) -> TaskLogsResponse:
         task = self._require_task(task_id)
-        if current_user is not None:
+        if enforce_access:
             access = AccessService(self.db)
             if not access.can_view_task(task, current_user):
                 raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied.")
@@ -696,7 +714,7 @@ class TaskService:
             self.db.add(new_artifact)
 
     def _build_task_summary_response(self, task: TranslationTask, *, current_user: User | None) -> TaskSummaryResponse:
-        include_sensitive = current_user is None or current_user.role == UserRole.ADMIN
+        include_sensitive = current_user is not None and current_user.role == UserRole.ADMIN
         summary = TaskSummaryResponse.model_validate(task)
         if not include_sensitive:
             summary.workspace_dir = None
@@ -705,7 +723,7 @@ class TaskService:
         return summary
 
     def _build_task_detail_response(self, task: TranslationTask, *, current_user: User | None) -> TaskDetailResponse:
-        include_sensitive = current_user is None or current_user.role == UserRole.ADMIN
+        include_sensitive = current_user is not None and current_user.role == UserRole.ADMIN
         summary = self._build_task_summary_response(task, current_user=current_user)
         return TaskDetailResponse(
             **summary.model_dump(),

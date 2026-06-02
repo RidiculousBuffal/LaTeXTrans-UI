@@ -21,7 +21,7 @@ from backend.app.schemas.discovery import (
 )
 from backend.app.services.arxiv_collection_service import ArxivCollectionService
 from backend.app.services.arxiv_discovery_service import ArxivDiscoveryService
-from backend.app.services.auth_service import get_current_user
+from backend.app.services.auth_service import get_current_user, get_optional_user
 
 
 router = APIRouter(prefix="/discovery", tags=["discovery"])
@@ -61,11 +61,44 @@ def list_papers(
     )
 
 
+@router.get("/public/papers", response_model=DiscoveryPaperListResponse)
+def list_public_papers(
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=20, ge=1, le=100),
+    category: str | None = None,
+    keyword: str | None = None,
+    worth_read: bool | None = None,
+    translated: bool | None = None,
+    source_run_date: date | None = None,
+    service: ArxivDiscoveryService = Depends(get_discovery_service),
+) -> DiscoveryPaperListResponse:
+    return service.list_papers(
+        page=page,
+        page_size=page_size,
+        category=category,
+        keyword=keyword,
+        worth_read=worth_read,
+        translated=translated,
+        collection_id=None,
+        source_run_date=source_run_date,
+        current_user=None,
+    )
+
+
 @router.get("/papers/{paper_id}", response_model=DiscoveryPaperDetailResponse)
 def get_paper_detail(
     paper_id: int,
     service: ArxivDiscoveryService = Depends(get_discovery_service),
     current_user: User = Depends(get_current_user),
+) -> DiscoveryPaperDetailResponse:
+    return service.get_paper_detail(paper_id, current_user=current_user)
+
+
+@router.get("/public/papers/{paper_id}", response_model=DiscoveryPaperDetailResponse)
+def get_public_paper_detail(
+    paper_id: int,
+    service: ArxivDiscoveryService = Depends(get_discovery_service),
+    current_user: User | None = Depends(get_optional_user),
 ) -> DiscoveryPaperDetailResponse:
     return service.get_paper_detail(paper_id, current_user=current_user)
 
