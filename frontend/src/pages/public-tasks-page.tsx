@@ -35,18 +35,29 @@ export function PublicTasksPage() {
 
   return (
     <div className="flex h-svh flex-col gap-4 overflow-hidden p-4">
-      <Card className="shrink-0 border-none bg-[linear-gradient(135deg,color-mix(in_oklab,var(--color-primary)_16%,white),color-mix(in_oklab,var(--color-accent)_44%,white))]">
+      <Card className="shrink-0 border-none bg-[radial-gradient(circle_at_top_left,color-mix(in_oklab,var(--color-primary)_18%,white),transparent_42%),linear-gradient(135deg,color-mix(in_oklab,var(--color-primary)_16%,white),color-mix(in_oklab,var(--color-accent)_44%,white))] shadow-[0_18px_45px_-28px_color-mix(in_oklab,var(--color-primary)_28%,transparent)] dark:bg-[radial-gradient(circle_at_12%_18%,color-mix(in_oklab,var(--color-primary)_42%,transparent),transparent_38%),radial-gradient(circle_at_88%_14%,color-mix(in_oklab,var(--color-accent)_26%,transparent),transparent_34%),linear-gradient(135deg,oklch(0.24_0.03_248),oklch(0.18_0.035_238))] dark:shadow-[0_22px_60px_-34px_color-mix(in_oklab,var(--color-primary)_50%,transparent)]">
         <CardHeader>
-          <Badge className="w-fit">Public Tasks</Badge>
-          <CardTitle className="text-3xl">All public translation jobs</CardTitle>
+          <Badge className="w-fit bg-primary/90 text-primary-foreground dark:bg-white/12 dark:text-white dark:ring-1 dark:ring-white/10">
+            Public Tasks
+          </Badge>
+          <CardTitle className="text-3xl text-slate-950 dark:text-white">All public translation jobs</CardTitle>
         </CardHeader>
         <CardContent className="flex flex-wrap items-center gap-3">
-          <Input   value={taskName} onChange={(e) => setTaskName(e.target.value)} placeholder="Search task name..." className="max-w-md bg-white" />
+          <Input
+            value={taskName}
+            onChange={(e) => setTaskName(e.target.value)}
+            placeholder="Search task name..."
+            className="max-w-md border-white/60 bg-white/82 text-slate-900 placeholder:text-slate-500 dark:border-white/10 dark:bg-white/8 dark:text-white dark:placeholder:text-white/40"
+          />
           <Button onClick={handleSearch}>
             <SearchIcon className="mr-2 size-4" />
             Search
           </Button>
-          <Button variant="outline" asChild>
+          <Button
+            variant="outline"
+            className="border-white/55 bg-white/24 text-slate-900 hover:bg-white/36 dark:border-white/12 dark:bg-white/6 dark:text-white dark:hover:bg-white/12"
+            asChild
+          >
             <Link to="/gallery">Paper gallery</Link>
           </Button>
         </CardContent>

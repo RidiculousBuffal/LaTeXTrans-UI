@@ -199,17 +199,6 @@ export default function LandingPage() {
                                 公开翻译任务
                             </Link>
                         </Button>
-                        {registrationEnabled && (
-                            <Button size="lg" className="h-12 px-8 text-base shadow-lg shadow-primary/25" asChild>
-                                <Link to="/register">
-                                    立即开始翻译
-                                    <ArrowRightIcon className="ml-2 h-4 w-4"/>
-                                </Link>
-                            </Button>
-                        )}
-                        <Button size="lg" variant="outline" className="h-12 px-8 text-base" asChild>
-                            <Link to="/login">登录账户</Link>
-                        </Button>
                     </div>
 
                     <div
