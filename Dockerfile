@@ -2,8 +2,8 @@ FROM nikolaik/python-nodejs:python3.12-nodejs20-slim AS frontend-builder
 
 WORKDIR /app/frontend
 
-COPY frontend/package.json frontend/package-lock.json ./
-RUN npm ci
+COPY frontend/package.json  ./
+RUN npm install
 
 COPY frontend/ ./
 RUN npm run build
