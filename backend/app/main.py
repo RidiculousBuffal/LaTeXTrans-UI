@@ -1,3 +1,5 @@
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -12,12 +14,20 @@ settings = get_settings()
 configure_logging()
 BabelDocService().validate_executable()
 
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    bootstrap_admin()
+    yield
+
+
 app = FastAPI(
     title=settings.app_name,
     version=settings.app_version,
     openapi_url=f"{settings.api_prefix}/openapi.json",
     docs_url=f"{settings.api_prefix}/docs",
     redoc_url=f"{settings.api_prefix}/redoc",
+    lifespan=lifespan,
 )
 
 app.add_middleware(
@@ -56,7 +66,7 @@ async def add_security_headers(request: Request, call_next):
     return response
 
 
-@app.on_event("startup")
+# @app.on_event("startup")
 def bootstrap_admin() -> None:
     """Create admin user on startup if explicitly enabled."""
     if not settings.admin_bootstrap_enabled:
