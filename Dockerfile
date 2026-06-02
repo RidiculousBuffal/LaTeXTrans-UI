@@ -54,14 +54,22 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 WORKDIR /app
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
+    biber \
     build-essential \
     fontconfig \
     fonts-noto-cjk \
+    ghostscript \
     latexmk \
+    texlive-bibtex-extra \
+    texlive-fonts-recommended \
     texlive-lang-chinese \
     texlive-lang-japanese \
     texlive-latex-extra \
     texlive-luatex \
+    texlive-pictures \
+    texlive-plain-generic \
+    texlive-publishers \
+    texlive-science \
     texlive-xetex \
     curl \
     && fc-cache -f \
