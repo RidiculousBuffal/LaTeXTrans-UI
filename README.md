@@ -20,6 +20,14 @@ Build the image from the repository root:
 docker build -t latex-trans-prod .
 ```
 
+The runtime image includes the LaTeX toolchain needed by this fork for PDF compilation:
+
+- `latexmk`
+- `pdflatex`
+- `xelatex`
+- `lualatex`
+- CJK support packages and Noto CJK fonts for Chinese/Japanese rendering
+
 Run the backend API and bundled frontend together on port `8000`:
 
 ```bash
@@ -153,6 +161,8 @@ pip install -r requirements.txt
 #### 2. Install MikTex(Recommended) or TeXLive
 
 If you need to compile LaTeX files (e.g., generate PDF output), install [MikTex](https://miktex.org/download) or [TeXLive](https://www.tug.org/texlive/) !
+
+If you use the Docker image from this fork, the container already ships with the required TeX Live, XeLaTeX/LuaLaTeX support, and CJK fonts.
 
  > [!IMPORTANT]
 For MikTex, installation please be sure to select "install on the fly", in addition, you need to install additional [Strawberry Perl](http://strawberryperl.com/) support compilation.

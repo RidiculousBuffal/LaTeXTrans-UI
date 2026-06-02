@@ -19,6 +19,14 @@
 docker build -t latex-trans-prod .
 ```
 
+当前 Fork 的运行时镜像已经内置 PDF 编译所需的 LaTeX 环境，包括：
+
+- `latexmk`
+- `pdflatex`
+- `xelatex`
+- `lualatex`
+- 中文/日文支持包，以及 Noto CJK 字体
+
 运行容器：
 
 ```bash
@@ -151,6 +159,8 @@ pip install -r requirements.txt
 #### 2. 安装MikTex（推荐, 更轻量）或TeXLive
 
 如需编译LaTeX文件（例如生成PDF输出），需要安装 [MikTex](https://miktex.org/download) 或 [TeXLive](https://www.tug.org/texlive/) !
+
+如果使用本 Fork 提供的 Docker 镜像，则容器内已经预装所需的 TeX Live、XeLaTeX/LuaLaTeX 支持以及 CJK 字体。
 
  > [!IMPORTANT]
 *对于 MikTex，安装时请务必选择 “install on the fly”，此外，您需要额外安装 [Strawberry Perl](http://strawberryperl.com/) 支持编译。
