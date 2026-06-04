@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import subprocess
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -7,6 +8,7 @@ from sqlalchemy import create_engine
 from sqlalchemy import text
 from sqlalchemy.orm import Session, sessionmaker
 
+from backend.app.core.task_runtime import build_task_timeout_message
 from backend.app.db.base import Base
 from backend.app.models.task import (
     TaskArtifact,
@@ -297,6 +299,7 @@ def test_config_snapshot_normalizes_string_mode_to_int() -> None:
     assert snapshot["mode"] == 0
     assert isinstance(snapshot["mode"], int)
     assert snapshot["target_language"] == "ch"
+    assert snapshot["runtime"]["task_timeout_seconds"] == TranslationService().settings.task_timeout_seconds
 
 
 def test_task_detail_configs_do_not_expose_llm_credentials() -> None:
@@ -392,6 +395,9 @@ def test_run_task_marks_failed_when_pdf_missing(monkeypatch, tmp_path: Path) -> 
     }
 
     class FakeTranslationService:
+        class settings:
+            task_timeout_seconds = 1200
+
         def ensure_runtime_dirs(self, *, task: TranslationTask):
             return runtime_dirs
 
@@ -563,10 +569,16 @@ def test_run_babeldoc_task_registers_pdf_artifacts(monkeypatch, tmp_path: Path) 
     }
 
     class FakeTranslationService:
+        class settings:
+            task_timeout_seconds = 1200
+
         def ensure_runtime_dirs(self, *, task: TranslationTask):
             return runtime_dirs
 
     class FakeBabelDocService:
+        class settings:
+            task_timeout_seconds = 1200
+
         def build_runtime_env(self, *, workspace_dir):
             return {"HOME": str(workspace_dir)}
 
@@ -612,3 +624,76 @@ def test_run_babeldoc_task_registers_pdf_artifacts(monkeypatch, tmp_path: Path) 
         TaskArtifactType.TRANSLATED_PDF,
         TaskArtifactType.BABELDOC_OUTPUT,
     }
+
+
+def test_run_babeldoc_task_marks_failed_on_timeout(monkeypatch, tmp_path: Path) -> None:
+    session = make_session()
+    task = seed_task(session, task_id="babeldoc-timeout", status=TaskStatus.PENDING)
+    task.engine = TaskEngine.BABELDOC
+    task.source_type = TaskSourceType.PDF_UPLOAD
+    task.source_archive_name = "sample.pdf"
+    task.configs[0].config_snapshot_json = {
+        "engine": "babeldoc",
+        "source_type": "pdf_upload",
+        "source_archive_name": "sample.pdf",
+        "runtime": {"options": {}, "task_timeout_seconds": 1200},
+        "babeldoc": {"qps": 20, "pool_max_workers": 20},
+    }
+    session.commit()
+
+    workspace_dir = tmp_path / "workspace"
+    runtime_dir = workspace_dir / "runtime"
+    sources_dir = workspace_dir / "sources"
+    output_dir = workspace_dir / "output"
+    babeldoc_output_dir = output_dir / "babeldoc"
+    runtime_dir.mkdir(parents=True, exist_ok=True)
+    sources_dir.mkdir(parents=True, exist_ok=True)
+    babeldoc_output_dir.mkdir(parents=True, exist_ok=True)
+    (sources_dir / "sample.pdf").write_text("pdf-source", encoding="utf-8")
+
+    runtime_dirs = {
+        "workspace_dir": str(workspace_dir),
+        "runtime_dir": str(runtime_dir),
+        "sources_dir": str(sources_dir),
+        "output_dir": str(output_dir),
+        "babeldoc_output_dir": str(babeldoc_output_dir),
+    }
+
+    class FakeTranslationService:
+        class settings:
+            task_timeout_seconds = 1200
+
+        def ensure_runtime_dirs(self, *, task: TranslationTask):
+            return runtime_dirs
+
+    class FakeBabelDocService:
+        class settings:
+            task_timeout_seconds = 1200
+
+        def build_runtime_env(self, *, workspace_dir):
+            return {"HOME": str(workspace_dir)}
+
+        def build_command(self, **kwargs):
+            return ["babeldoc", "--files", "sample.pdf"]
+
+        def run_command(self, **kwargs):
+            raise RuntimeError(build_task_timeout_message(timeout_seconds=1200, context="Translation task"))
+
+        def find_translated_pdf(self, *, output_dir, original_name=None):
+            return None
+
+    class FakeStorageService:
+        def upload_path(self, *, task: TranslationTask, artifact_type: TaskArtifactType, file_path, metadata=None):
+            raise AssertionError("Artifacts should not upload after timeout.")
+
+    monkeypatch.setattr(translation_runner, "TranslationService", lambda: FakeTranslationService())
+    monkeypatch.setattr(translation_runner, "BabelDocService", lambda: FakeBabelDocService())
+    monkeypatch.setattr(translation_runner, "StorageService", lambda: FakeStorageService())
+
+    translation_runner._run_task(task_id=task.id, db=session)
+
+    refreshed = TaskRepository(session).get_task_by_id(task.id)
+    assert refreshed is not None
+    assert refreshed.status == TaskStatus.FAILED
+    assert refreshed.error_message is not None
+    assert "timeout" in refreshed.error_message.lower()

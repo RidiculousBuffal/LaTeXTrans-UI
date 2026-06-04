@@ -5,6 +5,8 @@ from pathlib import Path
 import sys
 import asyncio
 
+from backend.app.core.task_runtime import ensure_time_remaining
+
 base_dir = os.getcwd()
 sys.path.append(base_dir)
 
@@ -56,11 +58,13 @@ class CoordinatorAgent:
         transed_project_dir = os.path.join(self.output_dir, f"{self.target_language}_{base_name}")
 
         os.makedirs(transed_project_dir, exist_ok=True)
+        self._ensure_time_remaining()
 
         parser_agent = ParserAgent(config=self.config,
                                    project_dir=self.project_dir,
                                    output_dir=transed_project_dir)
         parser_agent.execute()  
+        self._ensure_time_remaining()
 
         translator_agent = TranslatorAgent(config=self.config,
                                            project_dir=self.project_dir,
@@ -68,6 +72,7 @@ class CoordinatorAgent:
                                            trans_mode=self.mode,
                                            progress_callback=self.progress_callback)
         await translator_agent.execute()  # await
+        self._ensure_time_remaining()
         validator_agent = ValidatorAgent(config=self.config,
                                             project_dir=self.project_dir,
                                             output_dir=transed_project_dir)
@@ -78,8 +83,10 @@ class CoordinatorAgent:
             translator_agent.trans_mode = 1
 
         while errors_report and retry_count < MAX_RETRIES: # 3 times
+            self._ensure_time_remaining()
             translator_agent.errors_report = errors_report
             await translator_agent.execute(error_retry_count=retry_count, Maxtry=MAX_RETRIES)
+            self._ensure_time_remaining()
             errors_report = validator_agent.execute(errors_report)
             retry_count += 1
 
@@ -99,6 +106,14 @@ class CoordinatorAgent:
             print(f"🤖🎉 {self.name}: Successfully translated {os.path.basename(self.project_dir)} to {new_PDF_path}.")
         else:
             print(f"🤖🚧 {self.name}: Failed to translated {os.path.basename(self.project_dir)}.")
+
+    def _ensure_time_remaining(self) -> None:
+        runtime = self.config.get("runtime", {})
+        ensure_time_remaining(
+            self.config,
+            default_timeout_seconds=int(runtime.get("task_timeout_seconds", 20 * 60)),
+            context="Translation task",
+        )
 
 
     def workflow_latextrans(self) -> None:

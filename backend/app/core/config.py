@@ -34,6 +34,7 @@ class Settings(BaseSettings):
     babeldoc_qps: int = Field(default=20, alias="BABELDOC_QPS")
     babeldoc_pool_max_workers: int = Field(default=20, alias="BABELDOC_POOL_MAX_WORKERS")
     babeldoc_output_subdir: str = Field(default="babeldoc", alias="BABELDOC_OUTPUT_SUBDIR")
+    task_timeout_seconds: int = Field(default=20 * 60, alias="TASK_TIMEOUT_SECONDS")
 
     task_workspace_root: str = "runtime/tasks"
     upload_tmp_root: str = "runtime/uploads"
@@ -118,6 +119,8 @@ class Settings(BaseSettings):
             raise ValueError("AUTH_COOKIE_SAMESITE must be one of: lax, strict, none.")
         if self.upload_stream_chunk_bytes <= 0:
             raise ValueError("UPLOAD_STREAM_CHUNK_BYTES must be greater than 0.")
+        if self.task_timeout_seconds <= 0:
+            raise ValueError("TASK_TIMEOUT_SECONDS must be greater than 0.")
         if self.max_upload_bytes <= 0:
             raise ValueError("MAX_UPLOAD_BYTES must be greater than 0.")
         if self.artifact_download_url_expire_seconds <= 0:

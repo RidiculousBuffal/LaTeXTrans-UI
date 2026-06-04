@@ -1,12 +1,16 @@
-from typing import List, Dict, Any
-import re
 import os
 import subprocess
+from typing import Any, Dict, Mapping
+
+from backend.app.core.task_runtime import TaskTimeoutError, build_task_timeout_message, ensure_time_remaining
+
 from .utils import *
 
+
 class LaTexCompiler:
-    def __init__(self, output_latex_dir: str):
+    def __init__(self, output_latex_dir: str, config: Mapping[str, Any] | None = None):
         self.output_latex_dir = output_latex_dir
+        self.config = config or {}
 
     def compile(self):
         """
@@ -142,13 +146,21 @@ class LaTexCompiler:
             tex_file_name
         ]
         try:
-            subprocess.run(cmd, check=True, capture_output=True, cwd=cwd)
+            subprocess.run(
+                cmd,
+                check=True,
+                capture_output=True,
+                cwd=cwd,
+                timeout=self._get_timeout_seconds(),
+            )
             print("✅  Compilation successful!") #compile success!
 
             output_path = os.path.join(self.output_latex_dir, "success.txt")
             with open(output_path, "w", encoding="utf-8") as f:
                 f.write("Compilation successful\n")
                 
+        except subprocess.TimeoutExpired as exc:
+            raise self._build_timeout_error() from exc
         except subprocess.CalledProcessError as e:
             print("⚠️  Somthing went wrong during compiling with pdflatex.")
 
@@ -173,8 +185,16 @@ class LaTexCompiler:
             tex_file_name
         ]
         try:
-            subprocess.run(cmd, check=True, capture_output=True, cwd=cwd)
+            subprocess.run(
+                cmd,
+                check=True,
+                capture_output=True,
+                cwd=cwd,
+                timeout=self._get_timeout_seconds(),
+            )
             print("✅  Compilation successful!") #compile success!
+        except subprocess.TimeoutExpired as exc:
+            raise self._build_timeout_error() from exc
         except subprocess.CalledProcessError as e:
             print("⚠️  Somthing went wrong during compiling with xelatex.")
 
@@ -200,12 +220,34 @@ class LaTexCompiler:
             tex_file_name
         ]
         try:
-            subprocess.run(cmd, check=True, capture_output=True, cwd=cwd)
+            subprocess.run(
+                cmd,
+                check=True,
+                capture_output=True,
+                cwd=cwd,
+                timeout=self._get_timeout_seconds(),
+            )
             print("✅  Compilation successful!") #compile success!
 
             output_path = os.path.join(self.output_latex_dir, "success.txt")
             with open(output_path, "w", encoding="utf-8") as f:
                 f.write("Compilation successful\n")
                 
+        except subprocess.TimeoutExpired as exc:
+            raise self._build_timeout_error() from exc
         except subprocess.CalledProcessError as e:
             print(f"⚠️  Somthing went wrong during compiling with lualatex. \n {e}")
+
+    def _get_timeout_seconds(self) -> float:
+        runtime = self.config.get("runtime", {})
+        return ensure_time_remaining(
+            self.config,
+            default_timeout_seconds=int(runtime.get("task_timeout_seconds", 20 * 60)),
+            context="Translation task",
+        )
+
+    def _build_timeout_error(self) -> TaskTimeoutError:
+        timeout_seconds = int(self.config.get("runtime", {}).get("task_timeout_seconds", 20 * 60))
+        return TaskTimeoutError(
+            build_task_timeout_message(timeout_seconds=timeout_seconds, context="Translation task")
+        )

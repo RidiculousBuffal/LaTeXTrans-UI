@@ -11,6 +11,7 @@ from typing import Any
 from sqlalchemy.orm import Session
 
 from backend.app.core.logging import configure_logging
+from backend.app.core.task_runtime import ensure_time_remaining, initialize_task_deadline
 from backend.app.db.session import SessionLocal
 from backend.app.models.task import TaskArtifactType, TaskEngine, TaskEvent, TaskStatus, TranslationTask
 from backend.app.repositories.task_repository import TaskRepository
@@ -71,6 +72,15 @@ def _run_task(*, task_id: str, db: Session) -> None:
     config = dict(task.configs[-1].config_snapshot_json)
     config["tex_sources_dir"] = runtime_dirs["sources_dir"]
     config["output_dir"] = runtime_dirs["output_dir"]
+    default_timeout_seconds = getattr(
+        getattr(translation_service, "settings", None),
+        "task_timeout_seconds",
+        babeldoc_service.settings.task_timeout_seconds,
+    )
+    timeout_seconds, deadline_epoch = initialize_task_deadline(
+        config,
+        default_timeout_seconds=default_timeout_seconds,
+    )
     if task.engine == TaskEngine.LATEX:
         config["mode"] = translation_service.normalize_mode(config.get("mode", 0))
     log_path = Path(runtime_dirs["runtime_dir"]) / "task.log"
@@ -85,7 +95,13 @@ def _run_task(*, task_id: str, db: Session) -> None:
 
     logger.info(
         "translation_task_started",
-        extra={"task_id": task.id, "status": task.status.value, "workspace_dir": runtime_dirs["workspace_dir"]},
+        extra={
+            "task_id": task.id,
+            "status": task.status.value,
+            "workspace_dir": runtime_dirs["workspace_dir"],
+            "task_timeout_seconds": timeout_seconds,
+            "deadline_epoch": deadline_epoch,
+        },
     )
 
     try:
@@ -99,6 +115,7 @@ def _run_task(*, task_id: str, db: Session) -> None:
                 event_log_path=event_log_path,
                 babeldoc_service=babeldoc_service,
                 storage_service=storage_service,
+                task_timeout_seconds=timeout_seconds,
             )
         else:
             projects = _run_latex_task(
@@ -111,6 +128,7 @@ def _run_task(*, task_id: str, db: Session) -> None:
                 pipeline_service=pipeline_service,
                 storage_service=storage_service,
                 progress_state=progress_state,
+                task_timeout_seconds=timeout_seconds,
             )
 
         repository.commit()
@@ -179,8 +197,10 @@ def _run_latex_task(
     pipeline_service: PipelineService,
     storage_service: StorageService,
     progress_state: dict[str, tuple[int, int]],
+    task_timeout_seconds: int,
 ) -> list[str]:
     projects: list[str] = []
+    _ensure_task_not_timed_out(config=config, task_timeout_seconds=task_timeout_seconds)
     _ensure_not_canceled(repository=repository, task_id=task.id)
     _set_status(
         repository=repository,
@@ -197,9 +217,11 @@ def _run_latex_task(
             config=config,
             workspace_dir=runtime_dirs["workspace_dir"],
         )
+        _ensure_task_not_timed_out(config=config, task_timeout_seconds=task_timeout_seconds)
         _ensure_not_canceled(repository=repository, task_id=task.id)
 
         for project_dir in projects:
+            _ensure_task_not_timed_out(config=config, task_timeout_seconds=task_timeout_seconds)
             _ensure_not_canceled(repository=repository, task_id=task.id)
             _set_status(
                 repository=repository,
@@ -230,6 +252,7 @@ def _run_latex_task(
                     progress_state=progress_state,
                 ),
             )
+            _ensure_task_not_timed_out(config=config, task_timeout_seconds=task_timeout_seconds)
             _ensure_not_canceled(repository=repository, task_id=task.id)
             _set_status(
                 repository=repository,
@@ -296,7 +319,9 @@ def _run_babeldoc_task(
     event_log_path: Path,
     babeldoc_service: BabelDocService,
     storage_service: StorageService,
+    task_timeout_seconds: int,
 ) -> None:
+    _ensure_task_not_timed_out(config=config, task_timeout_seconds=task_timeout_seconds)
     _ensure_not_canceled(repository=repository, task_id=task.id)
     _set_status(
         repository=repository,
@@ -328,10 +353,21 @@ def _run_babeldoc_task(
         event_log_path=event_log_path,
     )
 
-    result = babeldoc_service.run_command(command=command, env=env, log_path=log_path)
+    timeout_seconds_remaining = ensure_time_remaining(
+        config,
+        default_timeout_seconds=task_timeout_seconds,
+        context="Translation task",
+    )
+    result = babeldoc_service.run_command(
+        command=command,
+        env=env,
+        log_path=log_path,
+        timeout_seconds=timeout_seconds_remaining,
+    )
     if result.returncode != 0:
         raise RuntimeError(f"BabelDOC process failed with exit code {result.returncode}.")
 
+    _ensure_task_not_timed_out(config=config, task_timeout_seconds=task_timeout_seconds)
     _ensure_not_canceled(repository=repository, task_id=task.id)
     _set_status(
         repository=repository,
@@ -388,6 +424,14 @@ def _ensure_not_canceled(*, repository: TaskRepository, task_id: str) -> Transla
     if task.canceled_at or task.status == TaskStatus.CANCELED:
         raise TaskCanceledError(f"Task {task_id} has been canceled.")
     return task
+
+
+def _ensure_task_not_timed_out(*, config: dict[str, Any], task_timeout_seconds: int) -> None:
+    ensure_time_remaining(
+        config,
+        default_timeout_seconds=task_timeout_seconds,
+        context="Translation task",
+    )
 
 
 def _mark_canceled(

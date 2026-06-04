@@ -29,6 +29,7 @@ class TranslationService:
                     "task_id": task.id,
                     "output_name": payload.output_name,
                     "options": payload.options,
+                    "task_timeout_seconds": self.settings.task_timeout_seconds,
                 },
                 "babeldoc": {
                     "binary": self.settings.babeldoc_bin,
@@ -65,6 +66,7 @@ class TranslationService:
                 "task_id": task.id,
                 "output_name": payload.output_name,
                 "options": payload.options,
+                "task_timeout_seconds": self.settings.task_timeout_seconds,
             },
         }
 

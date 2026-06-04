@@ -6,6 +6,7 @@ import subprocess
 from pathlib import Path
 
 from backend.app.core.config import get_settings
+from backend.app.core.task_runtime import TaskTimeoutError, build_task_timeout_message
 from backend.app.services.babeldoc_command_builder import build_babeldoc_command
 
 
@@ -73,18 +74,28 @@ class BabelDocService:
         command: list[str],
         env: dict[str, str],
         log_path: str | Path,
+        timeout_seconds: float | None = None,
     ) -> subprocess.CompletedProcess[str]:
         log_file = Path(log_path)
         log_file.parent.mkdir(parents=True, exist_ok=True)
         with log_file.open("a", encoding="utf-8") as handle:
-            return subprocess.run(
-                command,
-                check=False,
-                stdout=handle,
-                stderr=subprocess.STDOUT,
-                text=True,
-                env=env,
-            )
+            try:
+                return subprocess.run(
+                    command,
+                    check=False,
+                    stdout=handle,
+                    stderr=subprocess.STDOUT,
+                    text=True,
+                    env=env,
+                    timeout=timeout_seconds,
+                )
+            except subprocess.TimeoutExpired as exc:
+                raise TaskTimeoutError(
+                    build_task_timeout_message(
+                        timeout_seconds=self.settings.task_timeout_seconds,
+                        context="Translation task",
+                    )
+                ) from exc
 
     def find_translated_pdf(self, *, output_dir: str | Path, original_name: str | None = None) -> str | None:
         output_path = Path(output_dir)

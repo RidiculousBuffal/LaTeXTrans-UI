@@ -1,10 +1,12 @@
 from abc import ABC, abstractmethod
 from typing import Any, Callable, Dict, Optional
+import asyncio
 import json
-import yaml
-import toml
 from pathlib import Path
+import toml
+import yaml
 
+from backend.app.core.task_runtime import TaskTimeoutError, build_task_timeout_message, ensure_time_remaining
 from langchain_openai import ChatOpenAI
 
 
@@ -61,6 +63,18 @@ class BaseToolAgent(ABC):
             return
         self.progress_callback(payload)
 
+    async def ainvoke_with_task_timeout(self, messages: list[Any]) -> Any:
+        timeout_seconds = self._get_task_timeout_seconds()
+        try:
+            return await asyncio.wait_for(self.agent.ainvoke(messages), timeout=timeout_seconds)
+        except asyncio.TimeoutError as exc:
+            raise TaskTimeoutError(
+                build_task_timeout_message(
+                    timeout_seconds=int(self.config.get("runtime", {}).get("task_timeout_seconds", 20 * 60)),
+                    context="Translation task",
+                )
+            ) from exc
+
     @abstractmethod
     def execute(self, data: Any, **kwargs: Any) -> Any:
         """
@@ -79,6 +93,13 @@ class BaseToolAgent(ABC):
         If the key does not exist, returns the provided default value.
         """
         return self.config.get(key, default)
+
+    def _get_task_timeout_seconds(self) -> float:
+        return ensure_time_remaining(
+            self.config,
+            default_timeout_seconds=int(self.config.get("runtime", {}).get("task_timeout_seconds", 20 * 60)),
+            context="Translation task",
+        )
     
     def read_file(self, file_path: Path|str, file_format: str) -> Any:
         """
@@ -109,4 +130,3 @@ class BaseToolAgent(ABC):
         elif file_format == "toml":
             with open(file_path, 'w', encoding='utf-8') as f:
                 toml.dump(data, f)
-
