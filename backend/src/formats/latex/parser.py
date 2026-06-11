@@ -117,14 +117,10 @@ class LatexParser:
             begin, end = result.span()
             pos = result.end()
             match = result.group(4)
-            inputfilepath = os.path.join(self.dir, match)
-
-            if os.path.exists(f'{inputfilepath}'):
-                inputfilepath = f'{inputfilepath}'
-            elif os.path.exists(f'{inputfilepath}.tex'):
-                inputfilepath = f'{inputfilepath}.tex'
-            else:
-                print(f"⚠️ Warning: File not found: {inputfilepath}.tex or {inputfilepath}")
+            inputfilepath = resolve_tex_input_path(self.dir, match)
+            if inputfilepath is None:
+                raw_path = os.path.join(self.dir, match)
+                print(f"⚠️ Warning: File not found: {raw_path}.tex or {raw_path}")
                 pos = result.end()  # Skip this input and continue
                 continue
 

@@ -392,6 +392,25 @@ def read_tex_file(path):
         latex_code = f.read()
     return latex_code
 
+
+def resolve_tex_input_path(base_dir: str, match: str) -> str | None:
+    """Resolve a LaTeX \\input/\\include target to an existing file.
+
+    Prefer exact file matches, then fall back to the implicit `.tex` form.
+    Directories are never treated as readable TeX sources.
+    """
+    raw_path = os.path.join(base_dir, match)
+    candidates = [raw_path]
+
+    if not match.endswith('.tex'):
+        candidates.append(f"{raw_path}.tex")
+
+    for candidate in candidates:
+        if os.path.isfile(candidate):
+            return candidate
+
+    return None
+
 def read_json_file(path):
     with open(path, 'r', encoding='utf-8') as f:
         data = json.load(f)
@@ -593,17 +612,12 @@ def merge_tex_from_inputs(main_file_path):
             break
         begin, end = result.span()
         match = result.group(2)
-        inputfilepath = os.path.join(dirname, match)
-        if match.endswith('.tex'): #判断input的文件是否以.tex结尾
-            if os.path.exists(f'{inputfilepath}'):
-                inputfilepath = f'{inputfilepath}'
-            else:
-                raise FileNotFoundError(f"File not found: {inputfilepath}")
-        else:
-            if os.path.exists(f'{inputfilepath}.tex'):
-                inputfilepath = f'{inputfilepath}.tex'
-            else:
-                raise FileNotFoundError(f"File not found: {inputfilepath}.tex")
+        inputfilepath = resolve_tex_input_path(dirname, match)
+        if inputfilepath is None:
+            raw_path = os.path.join(dirname, match)
+            if match.endswith('.tex'):
+                raise FileNotFoundError(f"File not found: {raw_path}")
+            raise FileNotFoundError(f"File not found: {raw_path}.tex or {raw_path}")
         input_tex = read_tex_file(inputfilepath)
         input_tex = remove_comments(input_tex)
         maincontent = maincontent[:begin] + input_tex + maincontent[end:]
