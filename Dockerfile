@@ -27,6 +27,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     latexmk \
     texlive-bibtex-extra \
     texlive-fonts-recommended \
+    texlive-fonts-extra \
     texlive-lang-chinese \
     texlive-lang-japanese \
     texlive-latex-extra \
