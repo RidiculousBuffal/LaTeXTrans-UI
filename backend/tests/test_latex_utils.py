@@ -1,7 +1,16 @@
 from pathlib import Path
+from unittest.mock import Mock
 
+from backend.src.formats.latex.compile import LaTexCompiler
 from backend.src.formats.latex.parser import LatexParser
 from backend.src.formats.latex.utils import add_ctex_package, merge_tex_from_inputs
+
+
+def _write_xelatex_pdf(_tex_file: str, out_dir: str, engine: str) -> None:
+    assert engine == "xelatex"
+    output_dir = Path(out_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    (output_dir / "main.pdf").write_bytes(b"%PDF")
 
 
 def test_add_ctex_package_skips_acmart() -> None:
@@ -64,3 +73,30 @@ def test_latex_parser_merge_inputs_ignores_same_name_directory(tmp_path: Path) -
             "path": "appendix",
         }
     ]
+
+
+def test_compile_uses_xelatex_without_running_pdflatex(tmp_path: Path) -> None:
+    tex_file = tmp_path / "main.tex"
+    tex_file.write_text("\\documentclass{article}\\begin{document}ok\\end{document}", encoding="utf-8")
+    compiler = LaTexCompiler(str(tmp_path))
+    compiler._compile_with_xelatex = Mock(side_effect=_write_xelatex_pdf)
+
+    result = compiler.compile()
+
+    assert result == str(tmp_path / "build_xelatex" / "main.pdf")
+    compiler._compile_with_xelatex.assert_called_once_with(
+        str(tex_file), str(tmp_path / "build_xelatex"), engine="xelatex"
+    )
+
+
+def test_compile_source_uses_xelatex_without_running_pdflatex(tmp_path: Path) -> None:
+    tex_file = tmp_path / "main.tex"
+    pdf_dir = tmp_path / "pdf"
+    tex_file.write_text("\\documentclass{article}\\begin{document}ok\\end{document}", encoding="utf-8")
+    compiler = LaTexCompiler(str(tmp_path))
+    compiler._compile_with_xelatex = Mock(side_effect=_write_xelatex_pdf)
+
+    result = compiler.compile_source(str(pdf_dir))
+
+    assert result == str(pdf_dir / "main.pdf")
+    compiler._compile_with_xelatex.assert_called_once_with(str(tex_file), out_dir=str(pdf_dir), engine="xelatex")

@@ -22,7 +22,6 @@ docker build -t latex-trans-prod .
 当前 Fork 的运行时镜像已经内置 PDF 编译所需的 LaTeX 环境，包括：
 
 - `latexmk`
-- `pdflatex`
 - `xelatex`
 - `lualatex`
 - 中文/日文支持包，以及 Noto CJK 字体

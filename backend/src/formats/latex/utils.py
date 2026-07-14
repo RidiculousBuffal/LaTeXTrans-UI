@@ -633,7 +633,7 @@ def save_to_json(data, output_file):
     with open(output_file, 'w', encoding='utf-8') as f:
         json.dump(data, f, indent=4, ensure_ascii=False)
 
-def compile_with_latexmk(tex_file: str, out_dir: str = "out", engine: str = "pdflatex"):
+def compile_with_latexmk(tex_file: str, out_dir: str = "out", engine: str = "xelatex"):
     os.makedirs(out_dir, exist_ok=True)
     
     cmd = [
@@ -655,7 +655,7 @@ def compile_with_latexmk(tex_file: str, out_dir: str = "out", engine: str = "pdf
 
 def collect_latex_errors_with_logpath(folder: str):
     """
-    遍历每个项目，优先查找 build_pdflatex 目录，其次是 build 目录，
+    遍历每个项目，优先查找 build_xelatex 目录，其次是 build 目录，
     读取其中的 .log 文件，统计 LaTeX Error 出现次数。
     仅将包含错误的项目记录到 JSON 文件中，并输出错误项目总数。
     """
@@ -668,7 +668,7 @@ def collect_latex_errors_with_logpath(folder: str):
         if not os.path.isdir(project_path):
             continue
 
-        preferred_builds = ["build_pdflatex", "build"]
+        preferred_builds = ["build_xelatex", "build"]
         build_path = None
         for build_dir in preferred_builds:
             candidate = os.path.join(project_path, build_dir)

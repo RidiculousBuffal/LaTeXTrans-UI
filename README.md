@@ -23,7 +23,6 @@ docker build -t latex-trans-prod .
 The runtime image includes the LaTeX toolchain needed by this fork for PDF compilation:
 
 - `latexmk`
-- `pdflatex`
 - `xelatex`
 - `lualatex`
 - CJK support packages and Noto CJK fonts for Chinese/Japanese rendering
